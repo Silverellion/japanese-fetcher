@@ -1,7 +1,12 @@
-import { useState } from "react";
+import "./global.css";
+import StickyBox from "./stickyWindow/stickyBox";
 
 function App() {
-  return <></>;
+  return (
+    <>
+      <StickyBox></StickyBox>
+    </>
+  );
 }
 
 export default App;
