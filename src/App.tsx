@@ -1,5 +1,5 @@
 import "./global.css";
-import StickyBox from "./stickyWindow/stickyBox";
+import StickyBox from "./components/stickyWindow/stickyBox";
 
 function App() {
   return (
