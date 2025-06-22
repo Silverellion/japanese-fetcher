@@ -4,7 +4,9 @@ import StickyBox from "./stickyWindow/stickyBox";
 function App() {
   return (
     <>
-      <StickyBox></StickyBox>
+      <div className="bg-[rgb(30,30,30)] h-screen w-screen min-h-screen flex">
+        <StickyBox></StickyBox>
+      </div>
     </>
   );
 }

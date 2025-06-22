@@ -1,11 +1,7 @@
 import React from "react";
 
 const StickyBox: React.FC = () => {
-  return (
-    <div className="bg-[rgb(30,30,30)] ">
-      <div className="text-white">hello</div>
-    </div>
-  );
+  return <div className="text-white max-w-screen">shasd</div>;
 };
 
 export default StickyBox;
