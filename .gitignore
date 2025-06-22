@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+src/cpp/.vs
+src/cpp/cpp
+src/cpp/x64
