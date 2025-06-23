@@ -17,11 +17,13 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
 
-void writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int channels, int dataSize) {
+#define AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\audios\\")
+
+void writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int channels, size_t dataSize) {
     int byteRate = sampleRate * channels * bitsPerSample / 8;
     int blockAlign = channels * bitsPerSample / 8;
     out.write("RIFF", 4);
-    int chunkSize = 36 + dataSize;
+    size_t chunkSize = 36 + dataSize;
     out.write(reinterpret_cast<const char*>(&chunkSize), 4);
     out.write("WAVE", 4);
 
@@ -42,7 +44,7 @@ void writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int c
     out.write(reinterpret_cast<const char*>(&dataSize), 4);
 }
 
-void startAudioCapture(std::string outputDirectory, int secondsPerFile) {
+void startAudioCapture(int secondsPerFile) {
     CoInitialize(nullptr);
 
     IMMDeviceEnumerator* pEnumerator = nullptr;
@@ -110,7 +112,7 @@ void startAudioCapture(std::string outputDirectory, int secondsPerFile) {
 
 
             if (audioData.size() >= bufferSize) {
-                std::string filename = outputDirectory + "capture_" + std::to_string(fileCount++) + ".wav";
+                std::string filename = AUDIO_DIRECTORY + "capture_" + std::to_string(fileCount++) + ".wav";
                 std::ofstream out(filename, std::ios::binary);
                 writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size()); // Always write as 16-bit PCM
                 out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
