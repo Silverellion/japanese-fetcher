@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <cmath>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <fstream>
@@ -61,7 +62,7 @@ int main() {
 
     hr = pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_LOOPBACK,
-        10000000, 0, pwfx, nullptr); // 1 second buffer
+        10000000, 0, pwfx, nullptr);
     if (FAILED(hr)) return -4;
 
     hr = pAudioClient->GetService(__uuidof(IAudioCaptureClient), (void**)&pCaptureClient);
@@ -91,22 +92,31 @@ int main() {
             pCaptureClient->GetBuffer(&pData, &numFramesAvailable, &flags, nullptr, nullptr);
 
             UINT32 bytesToCopy = numFramesAvailable * blockAlign;
-            audioData.insert(audioData.end(), pData, pData + bytesToCopy);
+
+            float* samples = (float*)pData;
+            size_t sampleCount = bytesToCopy / sizeof(float);
+            std::vector<short> scaled(sampleCount);
+            for (size_t i = 0; i < sampleCount; ++i) {
+                if ( samples[i] >  1.0f) samples[i] =  1.0f;
+                if ( samples[i] < -1.0f) samples[i] = -1.0f;
+                scaled[i] = static_cast<short>(std::roundf(samples[i] * 32767.0f));
+            }
+            audioData.insert(audioData.end(), (BYTE*)scaled.data(), (BYTE*)scaled.data() + sampleCount * sizeof(short));
 
             pCaptureClient->ReleaseBuffer(numFramesAvailable);
             pCaptureClient->GetNextPacketSize(&packetLength);
 
             if (audioData.size() >= bufferSize) {
-                std::string filename = "capture_" + std::to_string(fileCount++) + ".wav";
+                std::string filename = "C:\\japanese-fetcher\\audios\\capture_" + std::to_string(fileCount++) + ".wav";
                 std::ofstream out(filename, std::ios::binary);
-                write_wav_header(out, pwfx->nSamplesPerSec, pwfx->wBitsPerSample,
-                                 pwfx->nChannels, audioData.size());
+                write_wav_header(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size()); // Always write as 16-bit PCM
                 out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
                 out.close();
                 std::cout << "Saved " << filename << "\n";
                 audioData.clear();
             }
         }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
