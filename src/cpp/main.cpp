@@ -3,6 +3,5 @@
 
 int main() {
 	Utility::initializeDirectory();
-
-	startAudioCapture();
+	AudioCapturer::startAudioCapture();
 }

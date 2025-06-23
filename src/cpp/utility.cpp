@@ -6,7 +6,7 @@
 
 void Utility::initializeDirectory() {
     static const std::vector<std::string> subdirs = {
-        "audios", "models", "transcripts", "test"
+        "audios", "models", "transcripts"
     };
 
     for (const auto& dir : subdirs) {

@@ -1,25 +1,15 @@
 #include "audio_capturer.h"
-#include <mmdeviceapi.h>
 
-#include <audioclient.h>
+#include <string>
 #include <windows.h>
-#include <cmath>
-
-#include <fstream>
-#include <filesystem>
-#include <iostream>
-
-#include <vector>
 #include <thread>
-#include <chrono>
-#include <comdef.h>
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
 
 #define AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\audios\\")
 
-void writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int channels, size_t dataSize) {
+void AudioCapturer::writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int channels, size_t dataSize) {
     int byteRate = sampleRate * channels * bitsPerSample / 8;
     int blockAlign = channels * bitsPerSample / 8;
     out.write("RIFF", 4);
@@ -44,7 +34,78 @@ void writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int c
     out.write(reinterpret_cast<const char*>(&dataSize), 4);
 }
 
-void startAudioCapture(int secondsPerFile) {
+bool AudioCapturer::initializeAudioDevices(IMMDeviceEnumerator** pEnumerator, IMMDevice** pDevice, IAudioClient** pAudioClient, IAudioCaptureClient** pCaptureClient) {
+    HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+        __uuidof(IMMDeviceEnumerator), (void**)pEnumerator);
+    if (FAILED(hr)) return false;
+
+    hr = (*pEnumerator)->GetDefaultAudioEndpoint(eRender, eConsole, pDevice); // loopback capture
+    if (FAILED(hr)) return false;
+
+    hr = (*pDevice)->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)pAudioClient);
+    if (FAILED(hr)) return false;
+
+    WAVEFORMATEX* pwfx = nullptr;
+    (*pAudioClient)->GetMixFormat(&pwfx); // Use shared format
+
+    hr = (*pAudioClient)->Initialize(AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_LOOPBACK,
+        10000000, 0, pwfx, nullptr);
+    if (FAILED(hr)) return false;
+
+    hr = (*pAudioClient)->GetService(__uuidof(IAudioCaptureClient), (void**)pCaptureClient);
+    if (FAILED(hr)) return false;
+
+    hr = (*pAudioClient)->Start();
+    if (FAILED(hr)) return false;
+
+    return true;
+}
+
+void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int blockAlign, std::vector<BYTE>& audioData) {
+    UINT32 packetLength = 0;
+    pCaptureClient->GetNextPacketSize(&packetLength);
+
+    while (packetLength != 0) {
+        BYTE* pData;
+        UINT32 numFramesAvailable;
+        DWORD flags;
+        pCaptureClient->GetBuffer(&pData, &numFramesAvailable, &flags, nullptr, nullptr);
+        UINT32 bytesToCopy = numFramesAvailable * blockAlign;
+
+        float* samples = (float*)pData;
+        size_t sampleCount = bytesToCopy / sizeof(float);
+        std::vector<short> scaled(sampleCount);
+        for (size_t i = 0; i < sampleCount; ++i) {
+            if (samples[i] >  1.0f) samples[i] =  1.0f;
+            if (samples[i] < -1.0f) samples[i] = -1.0f;
+            scaled[i] = static_cast<short>(std::roundf(samples[i] * 32767.0f));
+        }
+        audioData.insert(audioData.end(), (BYTE*)scaled.data(), (BYTE*)scaled.data() + sampleCount * sizeof(short));
+
+        pCaptureClient->ReleaseBuffer(numFramesAvailable);
+        pCaptureClient->GetNextPacketSize(&packetLength);
+    }
+}
+
+void AudioCapturer::saveAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int fileCount) {
+    std::string filename = AUDIO_DIRECTORY + "capture_" + std::to_string(fileCount) + ".wav";
+    std::ofstream out(filename, std::ios::binary);
+    writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size()); // Always write as 16-bit PCM
+    out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
+    out.close();
+    std::cout << "Saved " << filename << "\n";
+}
+
+void AudioCapturer::cleanupAudioDevices(WAVEFORMATEX* pwfx, IAudioCaptureClient* pCaptureClient, IAudioClient* pAudioClient, IMMDevice* pDevice, IMMDeviceEnumerator* pEnumerator) {
+    CoTaskMemFree(pwfx);
+    pCaptureClient->Release();
+    pAudioClient->Release();
+    pDevice->Release();
+    pEnumerator->Release();
+}
+
+void AudioCapturer::startAudioCapture(int secondsPerFile) {
     CoInitialize(nullptr);
 
     IMMDeviceEnumerator* pEnumerator = nullptr;
@@ -52,29 +113,10 @@ void startAudioCapture(int secondsPerFile) {
     IAudioClient* pAudioClient = nullptr;
     IAudioCaptureClient* pCaptureClient = nullptr;
 
-    HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
-        __uuidof(IMMDeviceEnumerator), (void**)&pEnumerator);
-    if (FAILED(hr)) return;
-
-    hr = pEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, &pDevice); // loopback capture
-    if (FAILED(hr)) return;
-
-    hr = pDevice->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)&pAudioClient);
-    if (FAILED(hr)) return;
+    if (!initializeAudioDevices(&pEnumerator, &pDevice, &pAudioClient, &pCaptureClient)) return;
 
     WAVEFORMATEX* pwfx = nullptr;
     pAudioClient->GetMixFormat(&pwfx); // Use shared format
-
-    hr = pAudioClient->Initialize(AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_LOOPBACK,
-        10000000, 0, pwfx, nullptr);
-    if (FAILED(hr)) return;
-
-    hr = pAudioClient->GetService(__uuidof(IAudioCaptureClient), (void**)&pCaptureClient);
-    if (FAILED(hr)) return;
-
-    hr = pAudioClient->Start();
-    if (FAILED(hr)) return;
 
     const int blockAlign = pwfx->nBlockAlign;
     const int bytesPerSec = pwfx->nAvgBytesPerSec;
@@ -87,48 +129,16 @@ void startAudioCapture(int secondsPerFile) {
     std::cout << "Recording started. Press Ctrl+C to stop." << std::endl;
 
     while (true) {
-        UINT32 packetLength = 0;
-        pCaptureClient->GetNextPacketSize(&packetLength);
+        processAudioBuffer(pCaptureClient, blockAlign, audioData);
 
-        while (packetLength != 0) {
-            BYTE* pData;
-            UINT32 numFramesAvailable;
-            DWORD flags;
-            pCaptureClient->GetBuffer(&pData, &numFramesAvailable, &flags, nullptr, nullptr);
-            UINT32 bytesToCopy = numFramesAvailable * blockAlign;
-
-            float* samples = (float*)pData;
-            size_t sampleCount = bytesToCopy / sizeof(float);
-            std::vector<short> scaled(sampleCount);
-            for (size_t i = 0; i < sampleCount; ++i) {
-                if (samples[i] > 1.0f) samples[i] = 1.0f;
-                if (samples[i] < -1.0f) samples[i] = -1.0f;
-                scaled[i] = static_cast<short>(std::roundf(samples[i] * 32767.0f));
-            }
-            audioData.insert(audioData.end(), (BYTE*)scaled.data(), (BYTE*)scaled.data() + sampleCount * sizeof(short));
-
-            pCaptureClient->ReleaseBuffer(numFramesAvailable);
-            pCaptureClient->GetNextPacketSize(&packetLength);
-
-
-            if (audioData.size() >= bufferSize) {
-                std::string filename = AUDIO_DIRECTORY + "capture_" + std::to_string(fileCount++) + ".wav";
-                std::ofstream out(filename, std::ios::binary);
-                writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size()); // Always write as 16-bit PCM
-                out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
-                out.close();
-                std::cout << "Saved " << filename << "\n";
-                audioData.clear();
-            }
+        if (audioData.size() >= bufferSize) {
+            saveAudioFile(audioData, pwfx, fileCount++);
+            audioData.clear();
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    CoTaskMemFree(pwfx);
-    pCaptureClient->Release();
-    pAudioClient->Release();
-    pDevice->Release();
-    pEnumerator->Release();
+    cleanupAudioDevices(pwfx, pCaptureClient, pAudioClient, pDevice, pEnumerator);
     CoUninitialize();
 }
