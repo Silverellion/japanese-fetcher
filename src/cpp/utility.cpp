@@ -2,11 +2,21 @@
 
 #include <filesystem>
 
-#define DEFAULT_DIRECTORY "C:\\japanese-fetcher\\"
+#define DEFAULT_DIRECTORY "C:\\japanese-fetcher"
 
-void initializeDirectory(std::string directoryName) {
-	std::string fullPath = DEFAULT_DIRECTORY + directoryName;
-	if (!(std::filesystem::exists(fullPath) && std::filesystem::is_directory(fullPath))) {
-		std::filesystem::create_directory(fullPath);
-	}
+void Utility::initializeDirectory() {
+    static const std::vector<std::string> subdirs = {
+        "audios", "models", "transcripts"
+    };
+
+    for (const auto& dir : subdirs) {
+        std::filesystem::path path = DEFAULT_DIRECTORY + std::string("\\") + dir;
+        if (!std::filesystem::is_directory(path)) {
+            std::filesystem::create_directory(path);
+        }
+    }
+}
+
+bool Utility::checkDirectory(std::string fullPath) {
+	return (std::filesystem::exists(fullPath) && std::filesystem::is_directory(fullPath));
 }

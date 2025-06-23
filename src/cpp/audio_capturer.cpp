@@ -107,7 +107,7 @@ void startAudioCapture(std::string outputDirectory, int secondsPerFile) {
 
             pCaptureClient->ReleaseBuffer(numFramesAvailable);
             pCaptureClient->GetNextPacketSize(&packetLength);
-            
+
 
             if (audioData.size() >= bufferSize) {
                 std::string filename = outputDirectory + "capture_" + std::to_string(fileCount++) + ".wav";

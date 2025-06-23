@@ -1,4 +1,10 @@
 #pragma once
 #include <string>
 
-void initializeDirectory(std::string directoryName);
+class Utility {
+public:
+	static void initializeDirectory();
+
+private:
+	bool checkDirectory(std::string fullPath);
+};

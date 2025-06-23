@@ -2,9 +2,7 @@
 #include "audio_capturer.h"
 
 int main() {
-	initializeDirectory("audios");
-	initializeDirectory("models");
-	initializeDirectory("transcripts");
+	Utility::initializeDirectory();
 
 	startAudioCapture("audios");
 }
