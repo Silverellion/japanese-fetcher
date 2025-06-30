@@ -20,11 +20,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="audio_capturer.cpp" />
+    <ClCompile Include="transcriber.cpp" />
     <ClCompile Include="utility.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="audio_capturer.h" />
+    <ClInclude Include="transcriber.h" />
     <ClInclude Include="utility.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
