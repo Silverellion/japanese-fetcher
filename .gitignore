@@ -22,6 +22,6 @@ dist-ssr
 *.njsproj
 *.sw?
 
-src/cpp/.vs
-src/cpp/cpp
-src/cpp/x64
+backend/cpp/.vs
+backend/cpp/cpp
+backend/cpp/x64
