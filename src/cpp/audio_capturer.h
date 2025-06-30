@@ -21,14 +21,14 @@ public:
 private:
 	static void writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int channels, size_t dataSize);
 	static bool initializeAudioDevices(IMMDeviceEnumerator** pEnumerator,
-									   IMMDevice** pDevice,
-									   IAudioClient** pAudioClient, 
-									   IAudioCaptureClient** pCaptureClient);
+                                       IMMDevice** pDevice,
+                                       IAudioClient** pAudioClient, 
+                                       IAudioCaptureClient** pCaptureClient);
 	static void processAudioBuffer(IAudioCaptureClient* pCaptureClient, int blockAlign, std::vector<BYTE>& audioData);
 	static void saveAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int fileCount);
 	static void cleanupAudioDevices(WAVEFORMATEX* pwfx,
-						 			IAudioCaptureClient* pCaptureClient, 
-						 			IAudioClient* pAudioClient, 
-									IMMDevice* pDevice, 
-									IMMDeviceEnumerator* pEnumerator);
+                                    IAudioCaptureClient* pCaptureClient, 
+                                    IAudioClient* pAudioClient, 
+                                    IMMDevice* pDevice, 
+                                    IMMDeviceEnumerator* pEnumerator);
 };
