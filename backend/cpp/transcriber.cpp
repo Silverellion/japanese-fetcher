@@ -62,6 +62,7 @@ void Transcriber::transcribeFile(const std::string& audioFilePath) {
         " -m " + MODEL_PATH +
         " -f \"" + audioFilePath + "\"" +
         " -of \"" + outputBase + "\"" +
+        " --language ja" + // TODO: Implement a language selector
         " --output-txt --output-srt";
 
     int result = system(command.c_str());
