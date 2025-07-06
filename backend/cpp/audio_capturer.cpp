@@ -1,8 +1,8 @@
 #include "audio_capturer.h"
 
 #include <string>
-#include <windows.h>
 #include <thread>
+#include <windows.h>
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
@@ -39,14 +39,14 @@ bool AudioCapturer::initializeAudioDevices(IMMDeviceEnumerator** pEnumerator, IM
         __uuidof(IMMDeviceEnumerator), (void**)pEnumerator);
     if (FAILED(hr)) return false;
 
-    hr = (*pEnumerator)->GetDefaultAudioEndpoint(eRender, eConsole, pDevice); // loopback capture
+    hr = (*pEnumerator)->GetDefaultAudioEndpoint(eRender, eConsole, pDevice);
     if (FAILED(hr)) return false;
 
     hr = (*pDevice)->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)pAudioClient);
     if (FAILED(hr)) return false;
 
     WAVEFORMATEX* pwfx = nullptr;
-    (*pAudioClient)->GetMixFormat(&pwfx); // Use shared format
+    (*pAudioClient)->GetMixFormat(&pwfx);
 
     hr = (*pAudioClient)->Initialize(AUDCLNT_SHAREMODE_SHARED,
         AUDCLNT_STREAMFLAGS_LOOPBACK,
@@ -77,9 +77,9 @@ void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int 
         size_t sampleCount = bytesToCopy / sizeof(float);
         std::vector<short> scaled(sampleCount);
         for (size_t i = 0; i < sampleCount; ++i) {
-            if (samples[i] >  1.0f) samples[i] =  1.0f;
+            if (samples[i] > 1.0f) samples[i] = 1.0f;
             if (samples[i] < -1.0f) samples[i] = -1.0f;
-            scaled[i] = static_cast<short>(std::roundf(samples[i] * 32767.0f));
+            scaled[i] = static_cast<short>(std::round(samples[i] * 32767.0f));
         }
         audioData.insert(audioData.end(), (BYTE*)scaled.data(), (BYTE*)scaled.data() + sampleCount * sizeof(short));
 
@@ -91,10 +91,10 @@ void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int 
 void AudioCapturer::saveAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int fileCount) {
     std::string filename = AUDIO_DIRECTORY + "capture_" + std::to_string(fileCount) + ".wav";
     std::ofstream out(filename, std::ios::binary);
-    writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size()); // Always write as 16-bit PCM
+    writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size());
     out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
     out.close();
-    std::cout << "Saved " << filename << "\n";
+    std::cout << "Saved " << filename << " (" << audioData.size() / 1024 << " KB)" << std::endl;
 }
 
 void AudioCapturer::cleanupAudioDevices(WAVEFORMATEX* pwfx, IAudioCaptureClient* pCaptureClient, IAudioClient* pAudioClient, IMMDevice* pDevice, IMMDeviceEnumerator* pEnumerator) {
@@ -105,6 +105,37 @@ void AudioCapturer::cleanupAudioDevices(WAVEFORMATEX* pwfx, IAudioCaptureClient*
     pEnumerator->Release();
 }
 
+float AudioCapturer::calculateRMS(const std::vector<BYTE>& audioData, int channels) {
+    if (audioData.size() < sizeof(short)) return 0.0f;
+
+    const short* samples = reinterpret_cast<const short*>(audioData.data());
+    size_t sampleCount = audioData.size() / sizeof(short);
+
+    size_t maxSamples = static_cast<size_t>(22050 * channels); // ~500ms at 44.1kHz
+    size_t samplesToCheck = (sampleCount < maxSamples) ? sampleCount : maxSamples;
+    if (samplesToCheck == 0) return 0.0f;
+
+    double sumSquares = 0.0;
+    for (size_t i = sampleCount - samplesToCheck; i < sampleCount; ++i) {
+        double normalized = static_cast<double>(samples[i]) / 32767.0;
+        sumSquares += normalized * normalized;
+    }
+
+    return static_cast<float>(std::sqrt(sumSquares / samplesToCheck));
+}
+
+bool AudioCapturer::detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels) {
+    float rms = calculateRMS(audioData, channels);
+    return rms < SILENCE_THRESHOLD;
+}
+
+void AudioCapturer::saveSegmentAtSilence(std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int& fileCount) {
+    if (audioData.size() > 0) {
+        saveAudioFile(audioData, pwfx, fileCount++);
+        audioData.clear();
+    }
+}
+
 void AudioCapturer::startAudioCapture(int secondsPerFile) {
     CoInitialize(nullptr);
 
@@ -113,27 +144,62 @@ void AudioCapturer::startAudioCapture(int secondsPerFile) {
     IAudioClient* pAudioClient = nullptr;
     IAudioCaptureClient* pCaptureClient = nullptr;
 
-    if (!initializeAudioDevices(&pEnumerator, &pDevice, &pAudioClient, &pCaptureClient)) return;
+    if (!initializeAudioDevices(&pEnumerator, &pDevice, &pAudioClient, &pCaptureClient)) {
+        std::cerr << "Failed to initialize audio devices" << std::endl;
+        return;
+    }
 
     WAVEFORMATEX* pwfx = nullptr;
-    pAudioClient->GetMixFormat(&pwfx); // Use shared format
+    pAudioClient->GetMixFormat(&pwfx);
 
     const int blockAlign = pwfx->nBlockAlign;
     const int bytesPerSec = pwfx->nAvgBytesPerSec;
-    const int bufferSize = bytesPerSec * secondsPerFile;
+    const int minBufferSize = bytesPerSec * MIN_SEGMENT_DURATION_SEC;
+    const int maxBufferSize = bytesPerSec * MAX_SEGMENT_DURATION_SEC;
 
     std::vector<BYTE> audioData;
-    audioData.reserve(bufferSize);
+    audioData.reserve(maxBufferSize);
 
     int fileCount = 0;
-    std::cout << "Recording started. Press Ctrl+C to stop." << std::endl;
+    auto lastSilenceCheck = std::chrono::steady_clock::now();
+    auto segmentStartTime = std::chrono::steady_clock::now();
+
+    std::cout << "Recording started with VAD (sample rate: " << pwfx->nSamplesPerSec
+        << " Hz, channels: " << pwfx->nChannels << ")" << std::endl;
+    std::cout << "Press Ctrl+C to stop." << std::endl;
 
     while (true) {
         processAudioBuffer(pCaptureClient, blockAlign, audioData);
 
-        if (audioData.size() >= bufferSize) {
-            saveAudioFile(audioData, pwfx, fileCount++);
-            audioData.clear();
+        auto now = std::chrono::steady_clock::now();
+        auto timeSinceLastCheck = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastSilenceCheck);
+        auto segmentDuration = std::chrono::duration_cast<std::chrono::seconds>(now - segmentStartTime);
+
+        // Check for silence every 100ms and if we have minimum audio duration
+        if (timeSinceLastCheck.count() >= 100 && audioData.size() >= minBufferSize) {
+            if (detectSilence(audioData, pwfx->nSamplesPerSec, pwfx->nChannels)) {
+                // Wait for minimum silence duration before splitting
+                std::this_thread::sleep_for(std::chrono::milliseconds(MIN_SILENCE_DURATION_MS));
+
+                // Check if still silent after waiting
+                std::vector<BYTE> tempBuffer;
+                processAudioBuffer(pCaptureClient, blockAlign, tempBuffer);
+                audioData.insert(audioData.end(), tempBuffer.begin(), tempBuffer.end());
+
+                if (detectSilence(audioData, pwfx->nSamplesPerSec, pwfx->nChannels)) {
+                    std::cout << "Silence detected, saving segment..." << std::endl;
+                    saveSegmentAtSilence(audioData, pwfx, fileCount);
+                    segmentStartTime = now;
+                }
+            }
+            lastSilenceCheck = now;
+        }
+
+        // Force save if segment is too long
+        if (segmentDuration.count() >= MAX_SEGMENT_DURATION_SEC) {
+            std::cout << "Maximum segment duration reached, saving..." << std::endl;
+            saveSegmentAtSilence(audioData, pwfx, fileCount);
+            segmentStartTime = now;
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
