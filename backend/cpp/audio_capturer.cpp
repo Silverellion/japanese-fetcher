@@ -19,7 +19,7 @@ void AudioCapturer::writeWavHeader(std::ofstream& out, int sampleRate, int bitsP
 
     // fmt chunk
     out.write("fmt ", 4);
-    int subchunk1Size = 16;
+    int subchunk1Size = 16; 
     short audioFormat = 1; // PCM
     out.write(reinterpret_cast<const char*>(&subchunk1Size), 4);
     out.write(reinterpret_cast<const char*>(&audioFormat), 2);
@@ -193,9 +193,12 @@ void AudioCapturer::startAudioCapture(int secondsPerFile) {
     auto segmentStartTime = std::chrono::steady_clock::now();
     auto lastCheck = std::chrono::steady_clock::now();
 
-    std::cout << "Recording started with VAD (sample rate: " << pwfx->nSamplesPerSec
-        << " Hz, channels: " << pwfx->nChannels << ")" << std::endl;
-    std::cout << "Press Ctrl+C to stop." << std::endl;
+    std::cout
+        << "Recording started with VAD (sample rate: " 
+        << pwfx->nSamplesPerSec
+        << " Hz, channels: " 
+        << pwfx->nChannels
+        << ")" << std::endl;
 
     while (true) {
         processAudioBuffer(pCaptureClient, pwfx->nBlockAlign, audioData);

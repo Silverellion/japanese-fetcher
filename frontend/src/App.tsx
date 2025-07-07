@@ -1,11 +1,11 @@
 import "./global.css";
-import StickyBox from "./components/stickyWindow/stickyBox";
+import MainWindow from "./components/mainWindow/mainWindow";
 
 function App() {
   return (
     <>
-      <div className="bg-[rgb(30,30,30)] h-screen w-screen min-h-screen flex">
-        <StickyBox></StickyBox>
+      <div className="bg-[rgb(60,60,60)] flex h-screen w-screen min-h-screen">
+        <MainWindow></MainWindow>
       </div>
     </>
   );
