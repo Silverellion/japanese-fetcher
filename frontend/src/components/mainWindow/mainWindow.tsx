@@ -6,7 +6,7 @@ const MainWindow: React.FC = () => {
   const [currentTab, setCurrentTab] = React.useState<Tab>("home");
   return (
     <>
-      <div className="flex h-screen bg-[rgb(30,30,30)]">
+      <div className="flex h-screen w-screen bg-[rgb(30,30,30)]">
         <Sidebar currentTab={currentTab} onTabChange={setCurrentTab}></Sidebar>
       </div>
     </>

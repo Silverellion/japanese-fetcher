@@ -27,8 +27,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabChange }) => {
         <div
           key={tab.key}
           onClick={() => onTabChange(tab.key)}
-          className={`flex hover:bg-[rgb(0,0,0)] 
-            ${currentTab === tab.key ? "bg-[rgb(0,0,0)]" : "bg-current"}
+          className={`flex gap-2 py-2 ps-2 pe-5 
+            hover:bg-[rgb(0,0,0)] cursor-pointer
+            ${currentTab === tab.key ? "bg-[rgb(0,0,0)]" : "bg-[rgb(15,15,15)]"}
           `}
         >
           <img src={tab.iconWhite} alt="" />
