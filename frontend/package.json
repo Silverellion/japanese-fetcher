@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build && electron-builder",
     "lint": "eslint .",
     "preview": "vite preview",
-    "electron": "wait-on http://localhost:5173 && electron ."
+    "electron": "concurrently -k -r \"npm:dev\" \"npm:electron-start\"",
+    "electron-start": "wait-on http://localhost:5173 && electron ."
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.10",
