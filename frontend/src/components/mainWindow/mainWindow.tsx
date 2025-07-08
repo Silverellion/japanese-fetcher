@@ -4,7 +4,7 @@ import TabSwitcher from "./sidebar/tabSwitcher";
 import { type Tab } from "../../types";
 
 const MainWindow: React.FC = () => {
-  const [currentTab, setCurrentTab] = React.useState<Tab>("home");
+  const [currentTab, setCurrentTab] = React.useState<Tab>("record");
   return (
     <>
       <div className="flex h-screen w-screen bg-[rgb(30,30,30)]">

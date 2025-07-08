@@ -7,8 +7,8 @@ app.commandLine.appendSwitch("disable-features", "Autofill");
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
-    width: 1920,
-    height: 1080,
+    width: 1280,
+    height: 720,
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -18,7 +18,6 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => {
-    mainWindow.maximize();
     mainWindow.show();
   });
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { type Tab } from "../../../types";
-import { House, FileAudio, Captions, Settings, type LucideIcon } from "lucide-react";
+import { CircleStop, FileAudio, Captions, Settings, type LucideIcon } from "lucide-react";
 
 interface SidebarProps {
   currentTab: Tab;
@@ -9,9 +9,9 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabChange }) => {
   // prettier-ignore
   const tabs: {key: Tab, label: string, icon: LucideIcon}[] = [
-    {key: 'home',        label: 'Home',        icon: House},
+    {key: 'record',      label: 'Record',      icon: CircleStop},
     {key: 'transcripts', label: 'Transcripts', icon: Captions},
-    {key: 'audios',      label: 'Audios',      icon: FileAudio},
+    {key: 'audios',      label: 'Saved Audio', icon: FileAudio},
     {key: 'settings',    label: 'Settings',    icon: Settings},
   ];
   return (

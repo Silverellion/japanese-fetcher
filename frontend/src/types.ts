@@ -1,1 +1,1 @@
-export type Tab = "home" | "transcripts" | "audios" | "settings";
+export type Tab = "record" | "transcripts" | "audios" | "settings";
