@@ -1,6 +1,6 @@
 import React from "react";
 import { type Tab } from "../../../types";
-import Record from "../tabs/record";
+import Record from "../tabs/record/record";
 import Transcripts from "../tabs/transcripts";
 import Audios from "../tabs/audios";
 import Settings from "../tabs/settings";
