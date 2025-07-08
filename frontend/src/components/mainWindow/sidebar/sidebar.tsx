@@ -15,7 +15,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabChange }) => {
     {key: 'settings',    label: 'Settings',    icon: Settings},
   ];
   return (
-    <div className="bg-[rgb(20,20,20)]">
+    <div className="bg-[rgb(20,20,20)] min-w-fit">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         return (
@@ -23,7 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentTab, onTabChange }) => {
             key={tab.key}
             onClick={() => onTabChange(tab.key)}
             className={`flex items-center gap-2 mx-2 my-0.5 py-1.5 ps-4 pe-6 
-            rounded-[15px] cursor-pointer 
+            rounded-[15px] cursor-pointer whitespace-nowrap
             transition-all duration-300 transform
             hover:bg-[rgb(40,40,40)] hover:translate-x-5
             ${currentTab === tab.key ? "bg-[rgb(40,40,40)]" : "bg-[rgb(20,20,20)]"}
