@@ -106,12 +106,10 @@ void Transcriber::transcribeFile(const std::string& audioFilePath) {
     std::cout << "Running: " << command << "\nWorking dir: " << whisperDir << std::endl;
 
     bool ok = runProcessWithWorkingDir(command, whisperDir);
-    if (ok) {
+    if (ok) 
         std::cout << "Transcribed: " << std::filesystem::path(audioFilePath).filename().string() << std::endl;
-    }
-    else {
+    else
         std::cerr << "Failed to transcribe: " << std::filesystem::path(audioFilePath).filename().string() << std::endl;
-    }
 }
 
 std::string Transcriber::getOutputBaseName(const std::string& audioFilePath) {
