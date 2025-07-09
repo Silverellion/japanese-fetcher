@@ -123,14 +123,14 @@ void AudioCapturer::writeWavHeader(std::ofstream& out, int sampleRate, int bitsP
     int byteRate = sampleRate * channels * bitsPerSample / 8;        // Number of bytes per second of audio playback
     int blockAlign = channels * bitsPerSample / 8;                   // Size of one sample frame (includes all channels)
 
-    out.write("RIFF", 4);                                            // Resource Interchange File Format – container format for multimedia.
+    out.write("RIFF", 4);                                            // Resource Interchange File Format - container format for multimedia.
 
     size_t chunkSize = 36 + dataSize;                                // File size minus 8 bytes (RIFF header and this chunkSize field)
                                                                      // 36 = 4 ("WAVE") + 24 (format section) + 8 ("data" header)
     out.write(reinterpret_cast<const char*>(&chunkSize), 4);         // Total size of file content after this point
 
     out.write("WAVE", 4);                                            // Specifies the file format is WAVE (used for audio)
-    out.write("fmt ", 4);                                            // "fmt " = "format" — marks the beginning of format information
+    out.write("fmt ", 4);                                            // "fmt " = "format" - marks the beginning of format information
 
     int subchunk1Size = 16;                                          // Format section size for PCM = 16 bytes (fixed for uncompressed audio)
     short audioFormat = 1;                                           // Format code: 1 = PCM (Pulse Code Modulation = raw audio, no compression)
