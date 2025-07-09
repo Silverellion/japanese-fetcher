@@ -1,5 +1,6 @@
 #include "utility.h"
 
+#include <windows.h>
 #include <filesystem>
 
 #define DEFAULT_DIRECTORY std::string("C:\\japanese-fetcher\\")
@@ -15,6 +16,13 @@ void Utility::initializeDirectory() {
             std::filesystem::create_directory(path);
         }
     }
+}
+
+std::string Utility::getExecutableDir() {
+    char buffer[MAX_PATH];
+    GetModuleFileNameA(NULL, buffer, MAX_PATH);
+    std::filesystem::path exePath(buffer);
+    return exePath.parent_path().string() + "\\";
 }
 
 bool Utility::checkDirectory(std::string fullPath) {
