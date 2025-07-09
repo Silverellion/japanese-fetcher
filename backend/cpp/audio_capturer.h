@@ -50,7 +50,22 @@ private:
                                     IMMDevice* pDevice, 
                                     IMMDeviceEnumerator* pEnumerator);
 
-    // VAD functions (Voice Activity Detection)
+    // === VAD functions (Voice Activity Detection) ===
+    /**
+    * @brief Calculates the Root Mean Square (RMS) value of the audio signal.
+    *
+    * RMS (Root Mean Square) is a measure of the signal's power, often used to estimate
+    * perceived loudness in audio processing.
+    *
+    * Formula: RMS = sqrt((1/N) * sum(samples[i]^2))
+    * - N is the number of samples
+    * - samples[i] are 16-bit signed PCM values
+    *
+    * @param audioData   Raw audio data in 16-bit signed integer format.
+    * @param channels    Number of audio channels (e.g., 1 for mono, 2 for stereo).
+    * @param durationMs  Duration (in milliseconds) over which to calculate RMS. Default is 200 ms.
+    * @return            RMS value as a float between 0.0 and 1.0.
+    */
     static float calculateRMS(const std::vector<BYTE>& audioData, int channels, int durationMs = 200);
     static bool detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs = 200);
     static bool isGoodSplitPoint(const std::vector<BYTE>& audioData, int sampleRate, int channels);

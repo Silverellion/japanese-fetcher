@@ -145,7 +145,7 @@ void AudioCapturer::writeWavHeader(std::ofstream& out, int sampleRate, int bitsP
     out.write("data", 4);                                            // "data" marks the start of audio data section
     out.write(reinterpret_cast<const char*>(&dataSize), 4);          // Number of bytes of actual audio data (not counting the header)
 }
-//------------
+
 bool AudioCapturer::initializeAudioDevices(IMMDeviceEnumerator** pEnumerator, IMMDevice** pDevice, IAudioClient** pAudioClient, IAudioCaptureClient** pCaptureClient) {
     // Create an instance of the audio device enumerator
     HRESULT hr = CoCreateInstance(
@@ -248,7 +248,6 @@ float AudioCapturer::calculateRMS(const std::vector<BYTE>& audioData, int channe
         sumSquares += normalized * normalized;                     
     }
 
-    // Root mean square = perceived volume
     return static_cast<float>(std::sqrt(sumSquares / samplesToCheck));
 }
 
