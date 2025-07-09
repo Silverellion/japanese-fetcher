@@ -1,13 +1,17 @@
 #include "transcriber.h"
+#include "utility.h"
 
+#include <windows.h>
 #include <filesystem>
 #include <iostream>
 #include <chrono>
 
 #define AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\audios\\")
 #define TRANSCRIPT_DIRECTORY std::string("C:\\japanese-fetcher\\transcripts\\")
-#define MODEL_PATH std::string("C:\\japanese-fetcher\\models\\ggml-medium.bin")
-#define WHISPER_EXE std::string("external\\whisper.cpp\\whisper-cli.exe")
+
+std::string exeDir = Utility::getExecutableDir();
+std::string whisperExe = exeDir + "external\\whisper.cpp\\whisper-cli.exe";
+std::string modelPath = "C:\\japanese-fetcher\\models\\ggml-medium.bin";
 
 std::atomic<bool> Transcriber::running{ false };
 std::thread Transcriber::monitorThread;
@@ -55,18 +59,54 @@ void Transcriber::monitorAudioDirectory() {
     }
 }
 
+bool Transcriber::runProcessWithWorkingDir(const std::string& command, const std::string& workingDir) {
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi;
+    char cmd[MAX_PATH * 4];
+    strncpy_s(cmd, command.c_str(), sizeof(cmd) - 1);
+
+    BOOL success = CreateProcessA(
+        NULL,                   // use command line to find exe
+        cmd,                    // command line to run
+        NULL,                   // default process security
+        NULL,                   // default thread security
+        FALSE,                  // don't inherit handles
+        CREATE_NO_WINDOW,       // run without showing a window
+        NULL,                   // use parent's environment
+        workingDir.c_str(),     // set working directory
+        &si,                    // startup info
+        &pi                     // receives process info (PID)
+    );
+
+    if (!success) {
+        std::cerr << "Failed to launch process. Error: " << GetLastError() << std::endl;
+        return false;
+    }
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 1;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return exitCode == 0;
+}
+
 void Transcriber::transcribeFile(const std::string& audioFilePath) {
     std::string outputBase = getOutputBaseName(audioFilePath);
 
-    std::string command = WHISPER_EXE +
-        " -m " + MODEL_PATH +
+    std::string command = "\"" + whisperExe + "\"" +
+        " -m \"" + modelPath + "\"" +
         " -f \"" + audioFilePath + "\"" +
         " -of \"" + outputBase + "\"" +
-        " --language ja" + // TODO: Implement a language selector
+        " --language ja" +
         " --output-txt --output-srt";
 
-    int result = system(command.c_str());
-    if (result == 0) {
+    std::string whisperDir = exeDir + "external\\whisper.cpp\\";
+
+    std::cout << "Running: " << command << "\nWorking dir: " << whisperDir << std::endl;
+
+    bool ok = runProcessWithWorkingDir(command, whisperDir);
+    if (ok) {
         std::cout << "Transcribed: " << std::filesystem::path(audioFilePath).filename().string() << std::endl;
     }
     else {

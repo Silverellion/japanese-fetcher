@@ -12,6 +12,8 @@ public:
 
 private:
     static void monitorAudioDirectory();
+
+    static bool runProcessWithWorkingDir(const std::string& command, const std::string& workingDir);
     static void transcribeFile(const std::string& audioFilePath);
     static std::string getOutputBaseName(const std::string& audioFilePath);
 

@@ -4,10 +4,120 @@
 #include <thread>
 #include <windows.h>
 
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
 
 #define AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\audios\\")
+
+std::atomic<bool> AudioCapturer::recording{ false };
+std::thread AudioCapturer::captureThread;
+std::mutex AudioCapturer::recordMutex;
+
+void AudioCapturer::startAudioCapture(int secondsPerFile) {
+    std::lock_guard<std::mutex> lock(recordMutex);
+    if (recording) return;
+    recording = true;
+    captureThread = std::thread(captureLoop, secondsPerFile);
+}
+
+void AudioCapturer::stopAudioCapture() {
+    std::lock_guard<std::mutex> lock(recordMutex);
+    if (!recording) return;
+    recording = false;
+    if (captureThread.joinable()) {
+        captureThread.join();
+    }
+}
+
+bool AudioCapturer::isRecording() {
+    return recording;
+}
+
+void AudioCapturer::captureLoop(int secondsPerFile) {
+    CoInitialize(nullptr);
+
+    IMMDeviceEnumerator* pEnumerator = nullptr;
+    IMMDevice* pDevice = nullptr;
+    IAudioClient* pAudioClient = nullptr;
+    IAudioCaptureClient* pCaptureClient = nullptr;
+
+    if (!initializeAudioDevices(&pEnumerator, &pDevice, &pAudioClient, &pCaptureClient)) {
+        std::cerr << "Failed to initialize audio devices" << std::endl;
+        return;
+    }
+
+    WAVEFORMATEX* pwfx = nullptr;
+    pAudioClient->GetMixFormat(&pwfx);
+
+    const int bytesPerSec = pwfx->nAvgBytesPerSec;
+    const int minBufferSize = bytesPerSec * 1;
+    const int maxBufferSize = bytesPerSec * 4;
+
+    std::vector<BYTE> audioData;
+    std::vector<BYTE> overlapBuffer;
+    audioData.reserve(maxBufferSize);
+
+    int segmentIdx = 1;
+    std::string dateStr = getCurrentDateString();
+    auto segmentStartTime = std::chrono::steady_clock::now();
+    auto lastCheck = std::chrono::steady_clock::now();
+
+    std::cout
+        << "Recording started with VAD (sample rate: " 
+        << pwfx->nSamplesPerSec
+        << " Hz, channels: " 
+        << pwfx->nChannels
+        << ")" << std::endl;
+
+    while (recording) {
+        processAudioBuffer(pCaptureClient, pwfx->nBlockAlign, audioData);
+
+        auto now = std::chrono::steady_clock::now();
+        auto segmentDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - segmentStartTime);
+        auto checkInterval = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCheck);
+
+        if (checkInterval.count() >= 100 && audioData.size() >= minBufferSize) {
+            if (segmentDuration.count() >= 1000) {
+                if (isGoodSplitPoint(audioData, pwfx->nSamplesPerSec, pwfx->nChannels)) {
+                    std::cout << "Silence detected, saving segment..." << std::endl;
+                    saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, segmentIdx, pwfx->nSamplesPerSec, dateStr);
+                    segmentStartTime = now;
+                }
+            }
+            lastCheck = now;
+        }
+
+        if (segmentDuration.count() >= 4000) {
+            std::cout << "Maximum segment duration reached, saving..." << std::endl;
+            saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, segmentIdx, pwfx->nSamplesPerSec, dateStr);
+            segmentStartTime = now;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    if (!audioData.empty()) {
+        saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, segmentIdx, pwfx->nSamplesPerSec, dateStr);
+    }
+
+    cleanupAudioDevices(pwfx, pCaptureClient, pAudioClient, pDevice, pEnumerator);
+    CoUninitialize();
+    std::cout << "Recording stopped." << std::endl;
+}
+
+std::string AudioCapturer::getCurrentDateString() {
+    std::time_t t = std::time(nullptr);
+    std::tm tm{};
+    localtime_s(&tm, &t);
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y%m%d");
+    return oss.str();
+}
 
 void AudioCapturer::writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int channels, size_t dataSize) {
     int byteRate = sampleRate * channels * bitsPerSample / 8;
@@ -88,8 +198,10 @@ void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int 
     }
 }
 
-void AudioCapturer::saveAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int fileCount) {
-    std::string filename = AUDIO_DIRECTORY + "capture_" + std::to_string(fileCount) + ".wav";
+void AudioCapturer::saveAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int segmentIdx, const std::string& dateStr) {
+    std::ostringstream oss;
+    oss << AUDIO_DIRECTORY << dateStr << "_SEGMENT_" << segmentIdx << ".wav";
+    std::string filename = oss.str();
     std::ofstream out(filename, std::ios::binary);
     writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size());
     out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
@@ -127,6 +239,7 @@ float AudioCapturer::calculateRMS(const std::vector<BYTE>& audioData, int channe
 
 bool AudioCapturer::detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs) {
     float rms = calculateRMS(audioData, channels, durationMs);
+    constexpr float SILENCE_THRESHOLD = 0.005f;
     return rms < SILENCE_THRESHOLD;
 }
 
@@ -138,11 +251,11 @@ bool AudioCapturer::isGoodSplitPoint(const std::vector<BYTE>& audioData, int sam
     float currentRMS = calculateRMS(audioData, channels, 100);
     float previousRMS = calculateRMS(audioData, channels, 200);
 
-    return (currentRMS < previousRMS * 0.7f) && (currentRMS < SILENCE_THRESHOLD * 2.0f);
+    return (currentRMS < previousRMS * 0.7f) && (currentRMS < 0.01f);
 }
 
 void AudioCapturer::saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::vector<BYTE>& overlapBuffer,
-    WAVEFORMATEX* pwfx, int& fileCount, int sampleRate) {
+    WAVEFORMATEX* pwfx, int& segmentIdx, int sampleRate, const std::string& dateStr) {
     if (audioData.empty()) return;
 
     size_t overlapSize = static_cast<size_t>(sampleRate * pwfx->nChannels * sizeof(short) * 0.5f);
@@ -151,7 +264,7 @@ void AudioCapturer::saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::ve
     segmentData.insert(segmentData.end(), overlapBuffer.begin(), overlapBuffer.end());
     segmentData.insert(segmentData.end(), audioData.begin(), audioData.end());
 
-    saveAudioFile(segmentData, pwfx, fileCount++);
+    saveAudioFile(segmentData, pwfx, segmentIdx++, dateStr);
 
     overlapBuffer.clear();
     if (audioData.size() >= overlapSize) {
@@ -163,72 +276,4 @@ void AudioCapturer::saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::ve
     }
 
     audioData.clear();
-}
-
-void AudioCapturer::startAudioCapture(int secondsPerFile) {
-    CoInitialize(nullptr);
-
-    IMMDeviceEnumerator* pEnumerator = nullptr;
-    IMMDevice* pDevice = nullptr;
-    IAudioClient* pAudioClient = nullptr;
-    IAudioCaptureClient* pCaptureClient = nullptr;
-
-    if (!initializeAudioDevices(&pEnumerator, &pDevice, &pAudioClient, &pCaptureClient)) {
-        std::cerr << "Failed to initialize audio devices" << std::endl;
-        return;
-    }
-
-    WAVEFORMATEX* pwfx = nullptr;
-    pAudioClient->GetMixFormat(&pwfx);
-
-    const int bytesPerSec = pwfx->nAvgBytesPerSec;
-    const int minBufferSize = bytesPerSec * MIN_SEGMENT_DURATION_SEC;
-    const int maxBufferSize = bytesPerSec * MAX_SEGMENT_DURATION_SEC;
-
-    std::vector<BYTE> audioData;
-    std::vector<BYTE> overlapBuffer;
-    audioData.reserve(maxBufferSize);
-
-    int fileCount = 0;
-    auto segmentStartTime = std::chrono::steady_clock::now();
-    auto lastCheck = std::chrono::steady_clock::now();
-
-    std::cout
-        << "Recording started with VAD (sample rate: " 
-        << pwfx->nSamplesPerSec
-        << " Hz, channels: " 
-        << pwfx->nChannels
-        << ")" << std::endl;
-
-    while (true) {
-        processAudioBuffer(pCaptureClient, pwfx->nBlockAlign, audioData);
-
-        auto now = std::chrono::steady_clock::now();
-        auto segmentDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - segmentStartTime);
-        auto checkInterval = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCheck);
-
-        if (checkInterval.count() >= 100 && audioData.size() >= minBufferSize) {
-
-            if (segmentDuration.count() >= (MIN_SEGMENT_DURATION_SEC * 1000)) {
-                if (isGoodSplitPoint(audioData, pwfx->nSamplesPerSec, pwfx->nChannels)) {
-                    std::cout << "Silence detected, saving segment..." << std::endl;
-                    saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, fileCount, pwfx->nSamplesPerSec);
-                    segmentStartTime = now;
-                }
-            }
-
-            lastCheck = now;
-        }
-
-        if (segmentDuration.count() >= (MAX_SEGMENT_DURATION_SEC * 1000)) {
-            std::cout << "Maximum segment duration reached, saving..." << std::endl;
-            saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, fileCount, pwfx->nSamplesPerSec);
-            segmentStartTime = now;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-
-    cleanupAudioDevices(pwfx, pCaptureClient, pAudioClient, pDevice, pEnumerator);
-    CoUninitialize();
 }

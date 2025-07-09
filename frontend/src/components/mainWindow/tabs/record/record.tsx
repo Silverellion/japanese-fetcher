@@ -1,14 +1,44 @@
-import React from "react";
+import React, { useEffect } from "react";
 import "./record.css";
 import { Square, Circle } from "lucide-react";
 
+declare global {
+  interface Window {
+    audioControl: {
+      startRecording: () => Promise<boolean>;
+      stopRecording: () => Promise<boolean>;
+      getRecordingStatus: () => Promise<boolean>;
+    };
+  }
+}
+
 const Record: React.FC = () => {
   const [isRecording, setIsRecording] = React.useState(false);
+
+  useEffect(() => {
+    const checkRecordingStatus = async () => {
+      try {
+        const status = await window.audioControl.getRecordingStatus();
+        setIsRecording(status);
+      } catch (error) {
+        console.error("Failed to get recording status:", error);
+      }
+    };
+
+    checkRecordingStatus();
+  }, []);
+
   const handleRecordToggle = async () => {
-    if (isRecording) {
-      setIsRecording(false);
-    } else {
-      setIsRecording(true);
+    try {
+      if (isRecording) {
+        await window.audioControl.stopRecording();
+        setIsRecording(false);
+      } else {
+        await window.audioControl.startRecording();
+        setIsRecording(true);
+      }
+    } catch (error) {
+      console.error("Failed to toggle recording:", error);
     }
   };
 
