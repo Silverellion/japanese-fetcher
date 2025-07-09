@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
-import "./record.css";
 import { Square, Circle } from "lucide-react";
+import "./record.css";
+import Subtitles from "./subtitles";
 
 declare global {
   interface Window {
@@ -46,7 +47,9 @@ const Record: React.FC = () => {
     <>
       <div className="flex flex-col h-full w-full">
         <div className="container h-full">
-          <div className="flex justify-center items-center">waveform graph</div>
+          <div className="flex justify-center items-center">
+            <Subtitles />
+          </div>
           <div className="flex justify-center items-center bg-[rgb(20,20,20)]">
             <button
               onClick={handleRecordToggle}
