@@ -1,9 +1,13 @@
-const { app, BrowserWindow, globalShortcut } = require("electron");
+const { app, BrowserWindow, globalShortcut, ipcMain } = require("electron");
 const path = require("path");
+const { exec } = require("child_process");
 const isDev = process.env.NODE_ENV !== "production";
 
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";
 app.commandLine.appendSwitch("disable-features", "Autofill");
+
+const backendPath = path.join(__dirname, "../../backend/cpp/x64/Release/cpp.exe");
+let backendProcess = null;
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -48,6 +52,41 @@ function createWindow() {
   });
 }
 
+// Handle IPC events for controlling the backend
+ipcMain.handle("start-recording", async () => {
+  if (!backendProcess) {
+    backendProcess = exec(`"${backendPath}" --start-recording`, (error) => {
+      if (error) {
+        console.error(`Error starting recording: ${error}`);
+        return false;
+      }
+    });
+  } else {
+    exec(`"${backendPath}" --command start-recording`);
+  }
+  return true;
+});
+
+ipcMain.handle("stop-recording", async () => {
+  if (backendProcess) {
+    exec(`"${backendPath}" --command stop-recording`);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle("get-recording-status", async () => {
+  return new Promise((resolve) => {
+    exec(`"${backendPath}" --command get-status`, (error, stdout) => {
+      if (error) {
+        console.error(`Error getting status: ${error}`);
+        resolve(false);
+      }
+      resolve(stdout.trim() === "recording");
+    });
+  });
+});
+
 app.whenReady().then(() => {
   createWindow();
 
@@ -57,9 +96,16 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", function () {
+  if (backendProcess) {
+    exec(`"${backendPath}" --command stop-recording`);
+  }
   if (process.platform !== "darwin") app.quit();
 });
 
 app.on("will-quit", () => {
+  if (backendProcess) {
+    exec(`"${backendPath}" --command exit`);
+    backendProcess = null;
+  }
   globalShortcut.unregisterAll();
 });
