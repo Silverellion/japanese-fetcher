@@ -98,7 +98,7 @@ void Transcriber::transcribeFile(const std::string& audioFilePath) {
         " -m \"" + modelPath + "\"" +
         " -f \"" + audioFilePath + "\"" +
         " -of \"" + outputBase + "\"" +
-        " --language ja" +
+        " --language ja" + // TODO: Add language selector
         " --output-txt --output-srt";
 
     std::string whisperDir = exeDir + "external\\whisper.cpp\\";

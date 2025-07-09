@@ -28,8 +28,8 @@ private:
     static constexpr float SILENCE_THRESHOLD = 0.005f;  // Lower threshold
     static constexpr int SHORT_SILENCE_MS = 300;        // Short pause detection
     static constexpr int LONG_SILENCE_MS = 800;         // Long pause detection
-    static constexpr int MIN_SEGMENT_DURATION_SEC = 1;  // Shorter minimum
-    static constexpr int MAX_SEGMENT_DURATION_SEC = 4;  // Shorter maximum for "live" feel
+    static constexpr int MIN_SEGMENT_DURATION_SEC = 1;  // Self-explanatory
+    static constexpr int MAX_SEGMENT_DURATION_SEC = 4;  // Self-explanatory
 
     static std::atomic<bool> recording;
     static std::thread captureThread;
@@ -50,7 +50,7 @@ private:
                                     IMMDevice* pDevice, 
                                     IMMDeviceEnumerator* pEnumerator);
 
-    // VAD functions
+    // VAD functions (Voice Activity Detection)
     static float calculateRMS(const std::vector<BYTE>& audioData, int channels, int durationMs = 200);
     static bool detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs = 200);
     static bool isGoodSplitPoint(const std::vector<BYTE>& audioData, int sampleRate, int channels);
