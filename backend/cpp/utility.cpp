@@ -2,21 +2,35 @@
 
 #include <windows.h>
 #include <filesystem>
+#include <iostream>
 
 #define DEFAULT_DIRECTORY std::string("C:\\japanese-fetcher\\")
 
 void Utility::initializeDirectory() {
-    static const std::vector<std::string> subdirs = {
-        "audios", "models", "transcripts"
+    if (!std::filesystem::exists(DEFAULT_DIRECTORY)) {
+         std::filesystem::create_directory(DEFAULT_DIRECTORY);
+    }
+
+    const std::vector<std::pair<std::string, std::vector<std::string>>> directoryGroups = {
+        {"Saved\\", {"Audios", "Transcripts", "Models"}},
+        {"Cache\\", {"Audios", "Transcripts"}}
     };
 
-    for (const auto& dir : subdirs) {
-        std::filesystem::path path = DEFAULT_DIRECTORY + dir;
-        if (!std::filesystem::is_directory(path)) {
-            std::filesystem::create_directory(path);
+    for (const auto& [base, subdirs] : directoryGroups) {
+        std::string baseDir = DEFAULT_DIRECTORY + base;
+        if (!std::filesystem::exists(baseDir)) {
+             std::filesystem::create_directory(baseDir);
+        }
+
+        for (const auto& sub : subdirs) {
+            std::filesystem::path path = baseDir + sub;
+            if (!std::filesystem::exists(path)) {
+                 std::filesystem::create_directory(path);
+            }
         }
     }
 }
+
 
 std::string Utility::getExecutableDir() {
     char buffer[MAX_PATH];

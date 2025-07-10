@@ -15,7 +15,7 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
 
-#define AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\audios\\")
+#define SEGMENTED_AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\Cache\\Audios\\")
 
 std::atomic<bool> AudioCapturer::recording{ false };
 std::thread AudioCapturer::captureThread;
@@ -118,7 +118,7 @@ std::string AudioCapturer::getCurrentDateString() {
     std::regex recordingPattern("RECORDING_([0-9]+)_");
 
     try {
-        for (const auto& entry : std::filesystem::directory_iterator(AUDIO_DIRECTORY)) {
+        for (const auto& entry : std::filesystem::directory_iterator(SEGMENTED_AUDIO_DIRECTORY)) {
             if (entry.is_regular_file() && entry.path().extension() == ".wav") {
                 std::string filename = entry.path().filename().string();
                 std::smatch matches;
@@ -242,7 +242,7 @@ void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int 
 
 void AudioCapturer::saveAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int segmentIdx, const std::string& dateStr) {
     std::ostringstream oss;
-    oss << AUDIO_DIRECTORY << dateStr << "_SEGMENT_" << segmentIdx << ".wav";
+    oss << SEGMENTED_AUDIO_DIRECTORY << dateStr << "_SEGMENT_" << segmentIdx << ".wav";
     std::string filename = oss.str();
     std::ofstream out(filename, std::ios::binary);
     writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size());
