@@ -15,16 +15,19 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
 
-#define AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\audios\\")
+#define SEGMENTED_AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\Cache\\Audios\\")
+#define FULL_AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\Saved\\Audios\\")
 
 std::atomic<bool> AudioCapturer::recording{ false };
 std::thread AudioCapturer::captureThread;
 std::mutex AudioCapturer::recordMutex;
+std::vector<BYTE> AudioCapturer::fullRecordingData;
 
 void AudioCapturer::startAudioCapture(int secondsPerFile) {
     std::lock_guard<std::mutex> lock(recordMutex);
     if (recording) return;
     recording = true;
+    fullRecordingData.clear();
     captureThread = std::thread(captureLoop, secondsPerFile);
 }
 
@@ -78,7 +81,16 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
         << ")" << std::endl;
 
     while (recording) {
-        processAudioBuffer(pCaptureClient, pwfx->nBlockAlign, audioData);
+        std::vector<BYTE> capturedBuffer;
+        processAudioBuffer(pCaptureClient, pwfx->nBlockAlign, capturedBuffer);
+
+        if (!capturedBuffer.empty()) {
+            fullRecordingData.insert(fullRecordingData.end(), capturedBuffer.begin(), capturedBuffer.end());
+        }
+
+        if (!capturedBuffer.empty()) {
+            audioData.insert(audioData.end(), capturedBuffer.begin(), capturedBuffer.end());
+        }
 
         auto now = std::chrono::steady_clock::now();
         auto segmentDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - segmentStartTime);
@@ -108,6 +120,10 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
         saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, segmentIdx, pwfx->nSamplesPerSec, dateStr);
     }
 
+    if (!fullRecordingData.empty()) {
+        saveFullAudioFile(fullRecordingData, pwfx, dateStr);
+    }
+
     cleanupAudioDevices(pwfx, pCaptureClient, pAudioClient, pDevice, pEnumerator);
     CoUninitialize();
     std::cout << "Recording stopped." << std::endl;
@@ -118,7 +134,20 @@ std::string AudioCapturer::getCurrentDateString() {
     std::regex recordingPattern("RECORDING_([0-9]+)_");
 
     try {
-        for (const auto& entry : std::filesystem::directory_iterator(AUDIO_DIRECTORY)) {
+        for (const auto& entry : std::filesystem::directory_iterator(SEGMENTED_AUDIO_DIRECTORY)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".wav") {
+                std::string filename = entry.path().filename().string();
+                std::smatch matches;
+                if (std::regex_search(filename, matches, recordingPattern) && matches.size() > 1) {
+                    int foundNumber = std::stoi(matches[1].str());
+                    if (foundNumber >= recordingNumber) {
+                        recordingNumber = foundNumber + 1;
+                    }
+                }
+            }
+        }
+
+        for (const auto& entry : std::filesystem::directory_iterator(FULL_AUDIO_DIRECTORY)) {
             if (entry.is_regular_file() && entry.path().extension() == ".wav") {
                 std::string filename = entry.path().filename().string();
                 std::smatch matches;
@@ -154,7 +183,7 @@ void AudioCapturer::writeWavHeader(std::ofstream& out, int sampleRate, int bitsP
     out.write("RIFF", 4);                                            // Resource Interchange File Format - container format for multimedia
 
     size_t chunkSize = 36 + dataSize;                                // File size minus 8 bytes (RIFF header and this chunkSize field)
-                                                                     // 36 = 4 ("WAVE") + 24 (format section) + 8 ("data" header)
+    // 36 = 4 ("WAVE") + 24 (format section) + 8 ("data" header)
 
     out.write(reinterpret_cast<const char*>(&chunkSize), 4);         // Total size of file content after this point
 
@@ -240,15 +269,26 @@ void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int 
     }
 }
 
-void AudioCapturer::saveAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int segmentIdx, const std::string& dateStr) {
+void AudioCapturer::saveSegmentedAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int segmentIdx, const std::string& dateStr) {
     std::ostringstream oss;
-    oss << AUDIO_DIRECTORY << dateStr << "_SEGMENT_" << segmentIdx << ".wav";
+    oss << SEGMENTED_AUDIO_DIRECTORY << dateStr << "_SEGMENT_" << segmentIdx << ".wav";
     std::string filename = oss.str();
     std::ofstream out(filename, std::ios::binary);
     writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size());
     out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
     out.close();
-    std::cout << "Saved " << filename << " (" << audioData.size() / 1024 << " KB)" << std::endl;
+    std::cout << "Saved segmented audio file: " << filename << " (" << audioData.size() / 1024 << " KB)" << std::endl;
+}
+
+void AudioCapturer::saveFullAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, const std::string& dateStr) {
+    std::ostringstream oss;
+    oss << FULL_AUDIO_DIRECTORY << dateStr << ".wav";
+    std::string filename = oss.str();
+    std::ofstream out(filename, std::ios::binary);
+    writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size());
+    out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
+    out.close();
+    std::cout << "Saved full audio file: " << filename << " (" << audioData.size() / 1024 << " KB)" << std::endl;
 }
 
 void AudioCapturer::cleanupAudioDevices(WAVEFORMATEX* pwfx, IAudioCaptureClient* pCaptureClient, IAudioClient* pAudioClient, IMMDevice* pDevice, IMMDeviceEnumerator* pEnumerator) {
@@ -299,7 +339,7 @@ bool AudioCapturer::isGoodSplitPoint(const std::vector<BYTE>& audioData, int sam
 }
 
 void AudioCapturer::saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::vector<BYTE>& overlapBuffer,
-    WAVEFORMATEX* pwfx, int& segmentIdx, int sampleRate, const std::string& dateStr) {
+    WAVEFORMATEX* pwfx, int& fileCount, int sampleRate, const std::string& dateStr) {
     if (audioData.empty()) return;
 
     size_t overlapSize = static_cast<size_t>(sampleRate * pwfx->nChannels * sizeof(short) * 0.5f);
@@ -308,7 +348,7 @@ void AudioCapturer::saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::ve
     segmentData.insert(segmentData.end(), overlapBuffer.begin(), overlapBuffer.end());
     segmentData.insert(segmentData.end(), audioData.begin(), audioData.end());
 
-    saveAudioFile(segmentData, pwfx, segmentIdx++, dateStr);
+    saveSegmentedAudioFile(segmentData, pwfx, fileCount++, dateStr);
 
     overlapBuffer.clear();
     if (audioData.size() >= overlapSize) {
