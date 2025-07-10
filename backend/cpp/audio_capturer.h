@@ -34,21 +34,23 @@ private:
     static std::atomic<bool> recording;
     static std::thread captureThread;
     static std::mutex recordMutex;
-    
+    static std::vector<BYTE> fullRecordingData;
+
     static void captureLoop(int secondsPerFile);
     static std::string getCurrentDateString();
     static void writeWavHeader(std::ofstream& out, int sampleRate, int bitsPerSample, int channels, size_t dataSize);
     static bool initializeAudioDevices(IMMDeviceEnumerator** pEnumerator,
-                                       IMMDevice** pDevice,
-                                       IAudioClient** pAudioClient, 
-                                       IAudioCaptureClient** pCaptureClient);
+        IMMDevice** pDevice,
+        IAudioClient** pAudioClient,
+        IAudioCaptureClient** pCaptureClient);
     static void processAudioBuffer(IAudioCaptureClient* pCaptureClient, int blockAlign, std::vector<BYTE>& audioData);
     static void saveSegmentedAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int segmentIdx, const std::string& dateStr);
+    static void saveFullAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, const std::string& dateStr);
     static void cleanupAudioDevices(WAVEFORMATEX* pwfx,
-                                    IAudioCaptureClient* pCaptureClient, 
-                                    IAudioClient* pAudioClient, 
-                                    IMMDevice* pDevice, 
-                                    IMMDeviceEnumerator* pEnumerator);
+        IAudioCaptureClient* pCaptureClient,
+        IAudioClient* pAudioClient,
+        IMMDevice* pDevice,
+        IMMDeviceEnumerator* pEnumerator);
 
     // === VAD functions (Voice Activity Detection) ===
     /**
@@ -69,6 +71,6 @@ private:
     static float calculateRMS(const std::vector<BYTE>& audioData, int channels, int durationMs = 200);
     static bool detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs = 200);
     static bool isGoodSplitPoint(const std::vector<BYTE>& audioData, int sampleRate, int channels);
-    static void saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::vector<BYTE>& overlapBuffer, 
-                                       WAVEFORMATEX* pwfx, int& fileCount, int sampleRate, const std::string& dateStr);
+    static void saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::vector<BYTE>& overlapBuffer,
+        WAVEFORMATEX* pwfx, int& fileCount, int sampleRate, const std::string& dateStr);
 };
