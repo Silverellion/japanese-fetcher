@@ -43,7 +43,7 @@ private:
                                        IAudioClient** pAudioClient, 
                                        IAudioCaptureClient** pCaptureClient);
     static void processAudioBuffer(IAudioCaptureClient* pCaptureClient, int blockAlign, std::vector<BYTE>& audioData);
-    static void saveAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int segmentIdx, const std::string& dateStr);
+    static void saveSegmentedAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, int segmentIdx, const std::string& dateStr);
     static void cleanupAudioDevices(WAVEFORMATEX* pwfx,
                                     IAudioCaptureClient* pCaptureClient, 
                                     IAudioClient* pAudioClient, 

@@ -92,7 +92,7 @@ bool Transcriber::runProcessWithWorkingDir(const std::string& command, const std
 }
 
 void Transcriber::transcribeFile(const std::string& audioFilePath) {
-    std::string outputBase = getOutputBaseName(audioFilePath);
+    std::string outputBase = getSegmentedAudioFile(audioFilePath);
 
     std::string command = "\"" + whisperExe + "\"" +
         " -m \"" + modelPath + "\"" +
@@ -112,7 +112,7 @@ void Transcriber::transcribeFile(const std::string& audioFilePath) {
         std::cerr << "Failed to transcribe: " << std::filesystem::path(audioFilePath).filename().string() << std::endl;
 }
 
-std::string Transcriber::getOutputBaseName(const std::string& audioFilePath) {
+std::string Transcriber::getSegmentedAudioFile(const std::string& audioFilePath) {
     std::filesystem::path path(audioFilePath);
     std::string filename = path.stem().string();
     return SEGMENTED_TRANSCRIPT_DIRECTORY + filename;
