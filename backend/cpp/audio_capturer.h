@@ -71,6 +71,4 @@ private:
     static float calculateRMS(const std::vector<BYTE>& audioData, int channels, int durationMs = 200);
     static bool detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs = 200);
     static bool isGoodSplitPoint(const std::vector<BYTE>& audioData, int sampleRate, int channels);
-    static void saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::vector<BYTE>& overlapBuffer,
-        WAVEFORMATEX* pwfx, int& fileCount, int sampleRate, const std::string& dateStr);
 };
