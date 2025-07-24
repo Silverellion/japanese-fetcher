@@ -10,6 +10,8 @@ declare global {
   }
 }
 
+const MAX_LINES = 3;
+
 const Subtitles: React.FC = () => {
   const [subtitles, setSubtitles] = useState<string[]>([]);
   const [backendReady, setBackendReady] = useState(false);
@@ -24,9 +26,15 @@ const Subtitles: React.FC = () => {
   useEffect(() => {
     if (!backendReady) return;
 
+    let lastSubtitle = "";
     const handleNewTranscript = (text: string) => {
-      const cleanedText = text.replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-      setSubtitles((prev) => [...prev.slice(-2), cleanedText]);
+      if (text && text !== lastSubtitle) {
+        setSubtitles((prev) => {
+          const newArr = [...prev, text];
+          return newArr.slice(-MAX_LINES);
+        });
+        lastSubtitle = text;
+      }
     };
 
     const cleanup = window.fileSystem.watchTranscripts(handleNewTranscript);
@@ -53,8 +61,10 @@ const Subtitles: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{
               opacity: 1,
-              y: (subtitles.length - 1 - index) * -40,
-              color: `rgb(${255 - index * 55}, ${255 - index * 55}, ${255 - index * 55})`,
+              y: (MAX_LINES - 1 - index) * -40,
+              color: `rgb(${255 - (MAX_LINES - 1 - index) * 55}, ${
+                255 - (MAX_LINES - 1 - index) * 55
+              }, ${255 - (MAX_LINES - 1 - index) * 55})`,
             }}
             exit={{ opacity: 0 }}
             style={{
