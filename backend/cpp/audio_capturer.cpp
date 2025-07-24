@@ -11,6 +11,7 @@
 
 #include <regex>
 #include <filesystem>
+#include <deque>
 
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
@@ -61,24 +62,18 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
     pAudioClient->GetMixFormat(&pwfx);
 
     const int bytesPerSec = pwfx->nAvgBytesPerSec;
-    const int minBufferSize = bytesPerSec * 1;
-    const int maxBufferSize = bytesPerSec * 4;
-
     std::vector<BYTE> audioData;
-    std::vector<BYTE> overlapBuffer;
-    audioData.reserve(maxBufferSize);
+    audioData.reserve(bytesPerSec * 4);
 
     int segmentIdx = 1;
     std::string dateStr = getCurrentDateString();
-    auto segmentStartTime = std::chrono::steady_clock::now();
-    auto lastCheck = std::chrono::steady_clock::now();
 
-    std::cout
-        << "Recording started with VAD (sample rate: "
-        << pwfx->nSamplesPerSec
-        << " Hz, channels: "
-        << pwfx->nChannels
-        << ")" << std::endl;
+    auto segmentStartTime = std::chrono::steady_clock::now();
+    bool inSilence = false;
+    int silenceMs = 0;
+
+    std::deque<float> rmsHistory;
+    constexpr int RMS_WINDOW_SIZE = 10;
 
     while (recording) {
         std::vector<BYTE> capturedBuffer;
@@ -86,38 +81,41 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
 
         if (!capturedBuffer.empty()) {
             fullRecordingData.insert(fullRecordingData.end(), capturedBuffer.begin(), capturedBuffer.end());
+            audioData.insert(audioData.end(), capturedBuffer.begin(), capturedBuffer.end());
         }
 
-        if (!capturedBuffer.empty()) {
-            audioData.insert(audioData.end(), capturedBuffer.begin(), capturedBuffer.end());
+        // Calculate RMS for the last 200ms and keep history
+        float rms = calculateRMS(audioData, pwfx->nChannels, 200);
+        rmsHistory.push_back(rms);
+        if (rmsHistory.size() > RMS_WINDOW_SIZE) rmsHistory.pop_front();
+
+        bool sustainedSilence = false;
+        if (rmsHistory.size() == RMS_WINDOW_SIZE) {
+            int silentFrames = 0;
+            for (float v : rmsHistory) {
+                if (v < SILENCE_THRESHOLD * 2) silentFrames++;
+            }
+            if (silentFrames >= RMS_WINDOW_SIZE - 2) sustainedSilence = true;
         }
 
         auto now = std::chrono::steady_clock::now();
         auto segmentDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - segmentStartTime);
-        auto checkInterval = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastCheck);
 
-        if (checkInterval.count() >= 100 && audioData.size() >= minBufferSize) {
-            if (segmentDuration.count() >= 1000) {
-                if (isGoodSplitPoint(audioData, pwfx->nSamplesPerSec, pwfx->nChannels)) {
-                    std::cout << "Silence detected, saving segment..." << std::endl;
-                    saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, segmentIdx, pwfx->nSamplesPerSec, dateStr);
-                    segmentStartTime = now;
-                }
-            }
-            lastCheck = now;
-        }
-
-        if (segmentDuration.count() >= 4000) {
-            std::cout << "Maximum segment duration reached, saving..." << std::endl;
-            saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, segmentIdx, pwfx->nSamplesPerSec, dateStr);
+        if (audioData.size() > bytesPerSec * MIN_SEGMENT_DURATION_SEC &&
+            (sustainedSilence || isGoodSplitPoint(audioData, pwfx->nSamplesPerSec, pwfx->nChannels))) {
+            saveSegmentedAudioFile(audioData, pwfx, segmentIdx, dateStr);
+            audioData.clear();
             segmentStartTime = now;
+            segmentIdx++;
+            rmsHistory.clear();
+            continue;
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     if (!audioData.empty()) {
-        saveSegmentWithOverlap(audioData, overlapBuffer, pwfx, segmentIdx, pwfx->nSamplesPerSec, dateStr);
+        saveSegmentedAudioFile(audioData, pwfx, segmentIdx, dateStr);
     }
 
     if (!fullRecordingData.empty()) {
@@ -126,7 +124,6 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
 
     cleanupAudioDevices(pwfx, pCaptureClient, pAudioClient, pDevice, pEnumerator);
     CoUninitialize();
-    std::cout << "Recording stopped." << std::endl;
 }
 
 std::string AudioCapturer::getCurrentDateString() {
@@ -240,7 +237,6 @@ bool AudioCapturer::initializeAudioDevices(IMMDeviceEnumerator** pEnumerator, IM
     return true;
 }
 
-
 void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int blockAlign, std::vector<BYTE>& audioData) {
     UINT32 packetLength = 0;
     pCaptureClient->GetNextPacketSize(&packetLength);               // Check if there's any audio packet available
@@ -277,7 +273,6 @@ void AudioCapturer::saveSegmentedAudioFile(const std::vector<BYTE>& audioData, W
     writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size());
     out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
     out.close();
-    std::cout << "Saved segmented audio file: " << filename << " (" << audioData.size() / 1024 << " KB)" << std::endl;
 }
 
 void AudioCapturer::saveFullAudioFile(const std::vector<BYTE>& audioData, WAVEFORMATEX* pwfx, const std::string& dateStr) {
@@ -288,7 +283,6 @@ void AudioCapturer::saveFullAudioFile(const std::vector<BYTE>& audioData, WAVEFO
     writeWavHeader(out, pwfx->nSamplesPerSec, 16, pwfx->nChannels, audioData.size());
     out.write(reinterpret_cast<const char*>(audioData.data()), audioData.size());
     out.close();
-    std::cout << "Saved full audio file: " << filename << " (" << audioData.size() / 1024 << " KB)" << std::endl;
 }
 
 void AudioCapturer::cleanupAudioDevices(WAVEFORMATEX* pwfx, IAudioCaptureClient* pCaptureClient, IAudioClient* pAudioClient, IMMDevice* pDevice, IMMDeviceEnumerator* pEnumerator) {
@@ -320,7 +314,6 @@ float AudioCapturer::calculateRMS(const std::vector<BYTE>& audioData, int channe
     return static_cast<float>(std::sqrt(sumSquares / samplesToCheck));
 }
 
-
 bool AudioCapturer::detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs) {
     float rms = calculateRMS(audioData, channels, durationMs);
     constexpr float SILENCE_THRESHOLD = 0.005f;
@@ -328,36 +321,16 @@ bool AudioCapturer::detectSilence(const std::vector<BYTE>& audioData, int sample
 }
 
 bool AudioCapturer::isGoodSplitPoint(const std::vector<BYTE>& audioData, int sampleRate, int channels) {
-    if (detectSilence(audioData, sampleRate, channels, 200)) {     // Check if recent 200ms is silence
+    if (detectSilence(audioData, sampleRate, channels, 400)) {
         return true;
     }
 
-    float currentRMS = calculateRMS(audioData, channels, 100);     // Get volume for last 100ms
-    float previousRMS = calculateRMS(audioData, channels, 200);    // Get volume for last 200ms
+    float currentRMS = calculateRMS(audioData, channels, 400);
+    float previousRMS = calculateRMS(audioData, channels, 800);
 
-    return (currentRMS < previousRMS * 0.7f) && (currentRMS < 0.01f); // Consider a drop in volume as a split point
-}
-
-void AudioCapturer::saveSegmentWithOverlap(std::vector<BYTE>& audioData, std::vector<BYTE>& overlapBuffer,
-    WAVEFORMATEX* pwfx, int& fileCount, int sampleRate, const std::string& dateStr) {
-    if (audioData.empty()) return;
-
-    size_t overlapSize = static_cast<size_t>(sampleRate * pwfx->nChannels * sizeof(short) * 0.5f);
-
-    std::vector<BYTE> segmentData;
-    segmentData.insert(segmentData.end(), overlapBuffer.begin(), overlapBuffer.end());
-    segmentData.insert(segmentData.end(), audioData.begin(), audioData.end());
-
-    saveSegmentedAudioFile(segmentData, pwfx, fileCount++, dateStr);
-
-    overlapBuffer.clear();
-    if (audioData.size() >= overlapSize) {
-        overlapBuffer.insert(overlapBuffer.end(),
-            audioData.end() - overlapSize, audioData.end());
-    }
-    else {
-        overlapBuffer = audioData;
+    if (previousRMS > 0.02f && currentRMS < previousRMS * 0.4f && currentRMS < 0.01f) {
+        return true;
     }
 
-    audioData.clear();
+    return false;
 }

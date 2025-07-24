@@ -13,7 +13,7 @@
 
 std::string exeDir = Utility::getExecutableDir();
 std::string whisperExe = exeDir + "external\\whisper.cpp\\whisper-cli.exe";
-std::string modelPath = "C:\\japanese-fetcher\\Saved\\Models\\ggml-large-v3-turbo.bin";
+std::string modelPath = "C:\\japanese-fetcher\\Saved\\Models\\ggml-medium.bin";
 
 std::atomic<bool> Transcriber::running{ false };
 std::thread Transcriber::monitorThread;
