@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 declare global {
@@ -7,23 +7,28 @@ declare global {
       watchTranscripts: (callback: (text: string) => void) => () => void;
       onBackendReady: (callback: () => void) => () => void;
     };
+    kuroshiro: {
+      convert: (text: string, options: any) => Promise<string>;
+    };
   }
 }
 
 const MAX_LINES = 3;
 
 const Subtitles: React.FC = () => {
-  const [subtitles, setSubtitles] = useState<string[]>([]);
-  const [backendReady, setBackendReady] = useState(false);
+  const [subtitles, setSubtitles] = React.useState<string[]>([]);
+  const [backendReady, setBackendReady] = React.useState(false);
+  const [furiganaSubtitles, setFuriganaSubtitles] = React.useState<string[]>([]);
+  const [processingError, setProcessingError] = React.useState<string | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const cleanup = window.fileSystem.onBackendReady(() => {
       setBackendReady(true);
     });
     return cleanup;
   }, []);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!backendReady) return;
 
     let lastSubtitle = "";
@@ -41,6 +46,33 @@ const Subtitles: React.FC = () => {
     return cleanup;
   }, [backendReady]);
 
+  React.useEffect(() => {
+    const processFurigana = async () => {
+      if (subtitles.length === 0) return;
+
+      try {
+        const processed = await Promise.all(
+          subtitles.map((text) =>
+            window.kuroshiro.convert(text, {
+              to: "hiragana",
+              mode: "furigana",
+              romajiSystem: "nippon",
+            })
+          )
+        );
+
+        setFuriganaSubtitles(processed);
+        setProcessingError(null);
+      } catch (error) {
+        setProcessingError("Failed to add furigana to text");
+      }
+    };
+
+    processFurigana();
+  }, [subtitles]);
+
+  const displaySubtitles = furiganaSubtitles.length > 0 ? furiganaSubtitles : subtitles;
+
   return (
     <div
       style={{
@@ -54,8 +86,13 @@ const Subtitles: React.FC = () => {
         alignItems: "center",
       }}
     >
+      {processingError && (
+        <div style={{ color: "red", marginBottom: "10px", fontSize: "12px" }}>
+          {processingError}
+        </div>
+      )}
       <AnimatePresence>
-        {subtitles.map((subtitle, index) => (
+        {displaySubtitles.map((subtitle, index) => (
           <motion.div
             key={`${subtitle}-${index}`}
             initial={{ opacity: 0, y: 20 }}
@@ -76,9 +113,10 @@ const Subtitles: React.FC = () => {
               margin: "4px 0",
               whiteSpace: "pre-line",
             }}
-          >
-            {subtitle}
-          </motion.div>
+            {...(furiganaSubtitles.includes(subtitle)
+              ? { dangerouslySetInnerHTML: { __html: subtitle } }
+              : { children: subtitle })}
+          />
         ))}
       </AnimatePresence>
     </div>
