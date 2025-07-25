@@ -50,22 +50,18 @@ const Subtitles: React.FC = () => {
     const processFurigana = async () => {
       if (subtitles.length === 0) return;
 
-      try {
-        const processed = await Promise.all(
-          subtitles.map((text) =>
-            window.kuroshiro.convert(text, {
-              to: "hiragana",
-              mode: "furigana",
-              romajiSystem: "nippon",
-            })
-          )
-        );
+      const processed = await Promise.all(
+        subtitles.map((text) =>
+          window.kuroshiro.convert(text, {
+            to: "hiragana",
+            mode: "furigana",
+            romajiSystem: "nippon",
+          })
+        )
+      );
 
-        setFuriganaSubtitles(processed);
-        setProcessingError(null);
-      } catch (error) {
-        setProcessingError("Failed to add furigana to text");
-      }
+      setFuriganaSubtitles(processed);
+      setProcessingError(null);
     };
 
     processFurigana();
