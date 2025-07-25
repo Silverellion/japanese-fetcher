@@ -1,5 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import "./subtitles.css";
 
 declare global {
   interface Window {
@@ -65,24 +66,20 @@ const Subtitles: React.FC = () => {
     processFurigana();
   }, [subtitles]);
 
+  const processFuriganaHtml = (html: string) => {
+    return html
+      .replace(/<\/ruby>\s+<ruby>/g, "</ruby><ruby>")
+      .replace(/(<\/ruby>)(\s+)([^\s<])/g, "$1$3");
+  };
+
   const displaySubtitles = furiganaSubtitles.length > 0 ? furiganaSubtitles : subtitles;
 
   return (
-    <div
-      style={{
-        padding: "20px",
-        position: "relative",
-        height: "200px",
-        width: "100%",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-end",
-        alignItems: "center",
-      }}
-    >
+    <div className="subtitles-container">
       <AnimatePresence>
         {displaySubtitles.map((subtitle, index) => (
           <motion.div
+            className="motion-div"
             key={`${subtitle}-${index}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{
@@ -93,17 +90,8 @@ const Subtitles: React.FC = () => {
               }, ${255 - (MAX_LINES - 1 - index) * 55})`,
             }}
             exit={{ opacity: 0 }}
-            style={{
-              position: "relative",
-              width: "auto",
-              textAlign: "center",
-              fontSize: "18px",
-              lineHeight: "1.5",
-              margin: "4px 0",
-              whiteSpace: "pre-line",
-            }}
             {...(furiganaSubtitles.includes(subtitle)
-              ? { dangerouslySetInnerHTML: { __html: subtitle } }
+              ? { dangerouslySetInnerHTML: { __html: processFuriganaHtml(subtitle) } }
               : { children: subtitle })}
           />
         ))}

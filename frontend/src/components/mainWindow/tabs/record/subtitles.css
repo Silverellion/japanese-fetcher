@@ -1,0 +1,34 @@
+.subtitles-container {
+  padding: 20px;
+  position: relative;
+  height: 200px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.motion-div {
+  position: relative;
+  width: auto;
+  text-align: center;
+  font-size: 18px;
+  line-height: 1.5;
+  margin: 4px 0;
+  white-space: pre-line;
+}
+
+.motion-div ruby rt {
+  font-size: 0.7em;
+  user-select: none;
+  pointer-events: none;
+  color: inherit;
+  letter-spacing: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.motion-div ruby {
+  white-space: nowrap;
+}
