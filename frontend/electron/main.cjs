@@ -2,6 +2,7 @@ const { app, BrowserWindow, globalShortcut, ipcMain } = require("electron");
 const path = require("path");
 const { spawn } = require("child_process");
 const fs = require("fs");
+
 const isDev = process.env.NODE_ENV !== "production";
 
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";
@@ -14,6 +15,24 @@ let pendingStatusResolvers = [];
 let mainWindow = null;
 let watcher = null;
 let processedFiles = new Set();
+let kuroshiro = null;
+let kuroshiroReady = false;
+
+async function initializeKuroshiro() {
+  try {
+    let Kuroshiro = require("kuroshiro");
+    let KuromojiAnalyzer = require("kuroshiro-analyzer-kuromoji");
+
+    if (Kuroshiro && Kuroshiro.default) Kuroshiro = Kuroshiro.default;
+    if (KuromojiAnalyzer && KuromojiAnalyzer.default) KuromojiAnalyzer = KuromojiAnalyzer.default;
+
+    kuroshiro = new Kuroshiro();
+    await kuroshiro.init(new KuromojiAnalyzer());
+    kuroshiroReady = true;
+  } catch (error) {
+    kuroshiroReady = false;
+  }
+}
 
 function watchTranscripts() {
   const TRANSCRIPT_DIR = "C:\\japanese-fetcher\\Cache\\Transcripts";
@@ -125,7 +144,17 @@ ipcMain.handle("get-recording-status", async () => {
   });
 });
 
-app.whenReady().then(createWindow);
+ipcMain.handle("convert-text", async (event, text, options) => {
+  if (!kuroshiroReady || !kuroshiro) {
+    throw new Error("Kuroshiro not initialized");
+  }
+  return await kuroshiro.convert(text, options);
+});
+
+app.whenReady().then(async () => {
+  createWindow();
+  await initializeKuroshiro();
+});
 
 app.on("window-all-closed", () => {
   if (watcher) {

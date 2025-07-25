@@ -18,3 +18,7 @@ contextBridge.exposeInMainWorld("fileSystem", {
     return () => ipcRenderer.removeListener("backend-ready", handleReady);
   },
 });
+
+contextBridge.exposeInMainWorld("kuroshiro", {
+  convert: (text, options) => ipcRenderer.invoke("convert-text", text, options),
+});

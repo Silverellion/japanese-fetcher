@@ -1,13 +1,14 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Kuroshiro from "kuroshiro";
-import KuromojiAnalyzer from "kuroshiro-analyzer-kuromoji";
 
 declare global {
   interface Window {
     fileSystem: {
       watchTranscripts: (callback: (text: string) => void) => () => void;
       onBackendReady: (callback: () => void) => () => void;
+    };
+    kuroshiro: {
+      convert: (text: string, options: any) => Promise<string>;
     };
   }
 }
@@ -18,26 +19,7 @@ const Subtitles: React.FC = () => {
   const [subtitles, setSubtitles] = React.useState<string[]>([]);
   const [backendReady, setBackendReady] = React.useState(false);
   const [furiganaSubtitles, setFuriganaSubtitles] = React.useState<string[]>([]);
-  const kuroshiroRef = React.useRef<Kuroshiro | null>(null);
-  const [kuroshiroReady, setKuroshiroReady] = React.useState(false);
   const [processingError, setProcessingError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    const loadKuroshiro = async () => {
-      const kuroshiro = new Kuroshiro();
-      const analyzer = new KuromojiAnalyzer({
-        dictPath: "dict",
-      });
-
-      await kuroshiro.init(analyzer);
-
-      kuroshiroRef.current = kuroshiro;
-      setKuroshiroReady(true);
-      setProcessingError(null);
-    };
-
-    loadKuroshiro();
-  }, []);
 
   React.useEffect(() => {
     const cleanup = window.fileSystem.onBackendReady(() => {
@@ -66,13 +48,13 @@ const Subtitles: React.FC = () => {
 
   React.useEffect(() => {
     const processFurigana = async () => {
-      if (!kuroshiroReady || !kuroshiroRef.current || subtitles.length === 0) return;
+      if (subtitles.length === 0) return;
 
       try {
         const processed = await Promise.all(
           subtitles.map((text) =>
-            kuroshiroRef.current!.convert(text, {
-              to: "html",
+            window.kuroshiro.convert(text, {
+              to: "hiragana",
               mode: "furigana",
               romajiSystem: "nippon",
             })
@@ -87,7 +69,7 @@ const Subtitles: React.FC = () => {
     };
 
     processFurigana();
-  }, [subtitles, kuroshiroReady]);
+  }, [subtitles]);
 
   const displaySubtitles = furiganaSubtitles.length > 0 ? furiganaSubtitles : subtitles;
 
