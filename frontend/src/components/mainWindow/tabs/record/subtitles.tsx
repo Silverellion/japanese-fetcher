@@ -77,24 +77,26 @@ const Subtitles: React.FC = () => {
   return (
     <div className="subtitles-container">
       <AnimatePresence>
-        {displaySubtitles.map((subtitle, index) => (
-          <motion.div
-            className="motion-div"
-            key={`${subtitle}-${index}`}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{
-              opacity: 1,
-              y: (MAX_LINES - 1 - index) * -40,
-              color: `rgb(${255 - (MAX_LINES - 1 - index) * 55}, ${
-                255 - (MAX_LINES - 1 - index) * 55
-              }, ${255 - (MAX_LINES - 1 - index) * 55})`,
-            }}
-            exit={{ opacity: 0 }}
-            {...(furiganaSubtitles.includes(subtitle)
-              ? { dangerouslySetInnerHTML: { __html: processFuriganaHtml(subtitle) } }
-              : { children: subtitle })}
-          />
-        ))}
+        {displaySubtitles.map((subtitle, index) => {
+          const age = displaySubtitles.length - 1 - index;
+          const colorValue = 255 - age * 55;
+          return (
+            <motion.div
+              className="motion-div"
+              key={`${subtitle}-${index}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{
+                opacity: 1,
+                y: age * -40,
+                color: `rgb(${colorValue}, ${colorValue}, ${colorValue})`,
+              }}
+              exit={{ opacity: 0 }}
+              {...(furiganaSubtitles.includes(subtitle)
+                ? { dangerouslySetInnerHTML: { __html: processFuriganaHtml(subtitle) } }
+                : { children: subtitle })}
+            />
+          );
+        })}
       </AnimatePresence>
     </div>
   );
