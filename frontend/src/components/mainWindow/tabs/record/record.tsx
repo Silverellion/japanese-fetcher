@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Square, Circle } from "lucide-react";
 import "./record.css";
 import Subtitles from "./subtitles";
@@ -16,7 +16,7 @@ declare global {
 const Record: React.FC = () => {
   const [isRecording, setIsRecording] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     const checkRecordingStatus = async () => {
       try {
         const status = await window.audioControl.getRecordingStatus();
