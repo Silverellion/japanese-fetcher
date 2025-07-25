@@ -21,6 +21,7 @@
 
 .motion-div ruby rt {
   font-size: 0.7em;
+  filter: brightness(0.7);
   user-select: none;
   pointer-events: none;
   color: inherit;
