@@ -19,7 +19,6 @@ const Subtitles: React.FC = () => {
   const [subtitles, setSubtitles] = React.useState<string[]>([]);
   const [backendReady, setBackendReady] = React.useState(false);
   const [furiganaSubtitles, setFuriganaSubtitles] = React.useState<string[]>([]);
-  const [processingError, setProcessingError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const cleanup = window.fileSystem.onBackendReady(() => {
@@ -61,7 +60,6 @@ const Subtitles: React.FC = () => {
       );
 
       setFuriganaSubtitles(processed);
-      setProcessingError(null);
     };
 
     processFurigana();
@@ -82,11 +80,6 @@ const Subtitles: React.FC = () => {
         alignItems: "center",
       }}
     >
-      {processingError && (
-        <div style={{ color: "red", marginBottom: "10px", fontSize: "12px" }}>
-          {processingError}
-        </div>
-      )}
       <AnimatePresence>
         {displaySubtitles.map((subtitle, index) => (
           <motion.div
