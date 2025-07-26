@@ -84,8 +84,8 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
             audioData.insert(audioData.end(), capturedBuffer.begin(), capturedBuffer.end());
         }
 
-        // Calculate RMS for the last 200ms and keep history
-        float rms = calculateRMS(audioData, pwfx->nChannels, 200);
+        // Calculate RMS for the last 80ms and keep history
+        float rms = calculateRMS(audioData, pwfx->nChannels, 80);
         rmsHistory.push_back(rms);
         if (rmsHistory.size() > RMS_WINDOW_SIZE) rmsHistory.pop_front();
 
@@ -314,6 +314,25 @@ float AudioCapturer::calculateRMS(const std::vector<BYTE>& audioData, int channe
     return static_cast<float>(std::sqrt(sumSquares / samplesToCheck));
 }
 
+float AudioCapturer::calculateZCR(const std::vector<BYTE>& audioData, int channels, int durationMs) {
+    if (audioData.size() < sizeof(short) * 2) return 0.0f;
+    const short* samples = reinterpret_cast<const short*>(audioData.data());
+    size_t sampleCount = audioData.size() / sizeof(short);
+
+    size_t samplesForDuration = static_cast<size_t>((44100 * channels * durationMs) / 1000);
+    size_t start = sampleCount > samplesForDuration ? sampleCount - samplesForDuration : 0;
+    size_t end = sampleCount;
+
+    int zeroCrossings = 0;
+    for (size_t i = start + 1; i < end; ++i) {
+        if ((samples[i - 1] >= 0 && samples[i] < 0) || (samples[i - 1] < 0 && samples[i] >= 0)) {
+            zeroCrossings++;
+        }
+    }
+    float zcr = static_cast<float>(zeroCrossings) / (end - start);
+    return zcr;
+}
+
 bool AudioCapturer::detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs) {
     float rms = calculateRMS(audioData, channels, durationMs);
     constexpr float SILENCE_THRESHOLD = 0.005f;
@@ -321,12 +340,19 @@ bool AudioCapturer::detectSilence(const std::vector<BYTE>& audioData, int sample
 }
 
 bool AudioCapturer::isGoodSplitPoint(const std::vector<BYTE>& audioData, int sampleRate, int channels) {
-    if (detectSilence(audioData, sampleRate, channels, 400)) {
+    float rms = calculateRMS(audioData, channels, 80);
+    float zcr = calculateZCR(audioData, channels, 80);
+
+    if (rms < 0.008f && zcr > 0.08f) {
         return true;
     }
 
-    float currentRMS = calculateRMS(audioData, channels, 400);
-    float previousRMS = calculateRMS(audioData, channels, 800);
+    if (detectSilence(audioData, sampleRate, channels, 120)) {
+        return true;
+    }
+
+    float currentRMS = calculateRMS(audioData, channels, 120);
+    float previousRMS = calculateRMS(audioData, channels, 240);
 
     if (previousRMS > 0.02f && currentRMS < previousRMS * 0.4f && currentRMS < 0.01f) {
         return true;
