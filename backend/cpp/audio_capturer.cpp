@@ -62,6 +62,8 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
     pAudioClient->GetMixFormat(&pwfx);
 
     const int bytesPerSec = pwfx->nAvgBytesPerSec;
+    const int sampleRate = pwfx->nSamplesPerSec;
+    const int channels = pwfx->nChannels;
     std::vector<BYTE> audioData;
     audioData.reserve(bytesPerSec * 4);
 
@@ -69,11 +71,13 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
     std::string dateStr = getCurrentDateString();
 
     auto segmentStartTime = std::chrono::steady_clock::now();
-    bool inSilence = false;
-    int silenceMs = 0;
 
+    // --- Voice Activity Detection for 50ms window ---
+    constexpr int VAD_WINDOW_MS = 50;
+    constexpr int VAD_CHECK_INTERVAL_MS = 10;
+    constexpr float VAD_RMS_THRESHOLD = 0.001f; // Lower = more sensitive to silence
     std::deque<float> rmsHistory;
-    constexpr int RMS_WINDOW_SIZE = 10;
+    int rmsHistoryMax = VAD_WINDOW_MS / VAD_CHECK_INTERVAL_MS;
 
     while (recording) {
         std::vector<BYTE> capturedBuffer;
@@ -84,34 +88,31 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
             audioData.insert(audioData.end(), capturedBuffer.begin(), capturedBuffer.end());
         }
 
-        // Calculate RMS for the last 80ms and keep history
-        float rms = calculateRMS(audioData, pwfx->nChannels, 80);
-        rmsHistory.push_back(rms);
-        if (rmsHistory.size() > RMS_WINDOW_SIZE) rmsHistory.pop_front();
-
-        bool sustainedSilence = false;
-        if (rmsHistory.size() == RMS_WINDOW_SIZE) {
-            int silentFrames = 0;
-            for (float v : rmsHistory) {
-                if (v < SILENCE_THRESHOLD * 2) silentFrames++;
-            }
-            if (silentFrames >= RMS_WINDOW_SIZE - 2) sustainedSilence = true;
-        }
-
         auto now = std::chrono::steady_clock::now();
         auto segmentDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - segmentStartTime);
 
-        if (audioData.size() > bytesPerSec * MIN_SEGMENT_DURATION_SEC &&
-            (sustainedSilence || isGoodSplitPoint(audioData, pwfx->nSamplesPerSec, pwfx->nChannels))) {
-            saveSegmentedAudioFile(audioData, pwfx, segmentIdx, dateStr);
-            audioData.clear();
-            segmentStartTime = now;
-            segmentIdx++;
-            rmsHistory.clear();
-            continue;
+        if (audioData.size() > bytesPerSec * MIN_SEGMENT_DURATION_SEC) {
+            float rms = calculateRMS(audioData, channels, VAD_CHECK_INTERVAL_MS);
+            rmsHistory.push_back(rms);
+            if (rmsHistory.size() > rmsHistoryMax) rmsHistory.pop_front();
+
+            bool noVoiceActivity = false;
+            if (rmsHistory.size() == rmsHistoryMax) {
+                noVoiceActivity = std::all_of(rmsHistory.begin(), rmsHistory.end(),
+                    [](float v) { return v < VAD_RMS_THRESHOLD; });
+            }
+
+            if (noVoiceActivity) {
+                saveSegmentedAudioFile(audioData, pwfx, segmentIdx, dateStr);
+                audioData.clear();
+                segmentStartTime = now;
+                segmentIdx++;
+                rmsHistory.clear();
+                continue;
+            }
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(VAD_CHECK_INTERVAL_MS));
     }
 
     if (!audioData.empty()) {
