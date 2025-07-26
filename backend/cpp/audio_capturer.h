@@ -25,7 +25,7 @@ public:
     static bool isRecording();
 
 private:
-    static constexpr float SILENCE_THRESHOLD = 0.005f;  // Lower threshold
+    static constexpr float SILENCE_THRESHOLD = 0.004f;
     static constexpr int SHORT_SILENCE_MS = 300;        // Short pause detection
     static constexpr int LONG_SILENCE_MS = 800;         // Long pause detection
     static constexpr int MIN_SEGMENT_DURATION_SEC = 1;  // Self-explanatory
@@ -68,7 +68,8 @@ private:
     * @param durationMs  Duration (in milliseconds) over which to calculate RMS. Default is 200 ms.
     * @return            RMS value as a float between 0.0 and 1.0.
     */
-    static float calculateRMS(const std::vector<BYTE>& audioData, int channels, int durationMs = 200);
-    static bool detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs = 200);
+    static float calculateRMS(const std::vector<BYTE>& audioData, int channels, int durationMs = 80);
+    static float calculateZCR(const std::vector<BYTE>& audioData, int channels, int durationMs = 80);
+    static bool detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs = 120);
     static bool isGoodSplitPoint(const std::vector<BYTE>& audioData, int sampleRate, int channels);
 };
