@@ -112,7 +112,7 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
 
         if (!capturedBuffer.empty()) {
             leftoverBytes.insert(leftoverBytes.end(), capturedBuffer.begin(), capturedBuffer.end());
-            vadSentenceSplitter({}, pwfx, segmentIdx, dateStr); 
+            vadSentenceSplitter({}, pwfx, segmentIdx, dateStr);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -323,6 +323,8 @@ void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>&, WAVEFORMATEX* 
     const int frameBytes = frameSamples * bytesPerSample * channels;
     size_t offset = 0;
 
+    static int hangoverFrames = 0;
+
     while (leftoverBytes.size() - offset >= frameBytes) {
         const int16_t* frame = reinterpret_cast<const int16_t*>(&leftoverBytes[offset]);
         float rms = frameRMS(frame, frameSamples * channels);
@@ -333,10 +335,14 @@ void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>&, WAVEFORMATEX* 
             speechFrames++;
             silenceFrames = 0;
             inSpeech = true;
+            hangoverFrames = HANGOVER_MAX;
         }
         else {
             if (inSpeech) silenceFrames++;
-            if (inSpeech && silenceFrames >= VAD_MIN_SILENCE_FRAMES && speechFrames >= VAD_MIN_SPEECH_FRAMES) {
+            if (hangoverFrames > 0) {
+                hangoverFrames--;
+            }
+            if (inSpeech && silenceFrames >= VAD_MIN_SILENCE_FRAMES && speechFrames >= VAD_MIN_SPEECH_FRAMES && hangoverFrames == 0) {
                 if (!vadBuffer.empty()) {
                     int16_t* segSamples = reinterpret_cast<int16_t*>(vadBuffer.data());
                     size_t segCount = vadBuffer.size() / sizeof(int16_t);
@@ -352,6 +358,7 @@ void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>&, WAVEFORMATEX* 
                 silenceFrames = 0;
                 speechFrames = 0;
                 inSpeech = false;
+                hangoverFrames = 0;
             }
         }
         offset += frameBytes;
@@ -375,5 +382,6 @@ void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>&, WAVEFORMATEX* 
         silenceFrames = 0;
         speechFrames = 0;
         inSpeech = false;
+        hangoverFrames = 0;
     }
 }
