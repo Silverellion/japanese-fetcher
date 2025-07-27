@@ -13,6 +13,9 @@
 #include <filesystem>
 #include <deque>
 
+#include <vector>
+#include <cmath>
+
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
 
@@ -24,11 +27,38 @@ std::thread AudioCapturer::captureThread;
 std::mutex AudioCapturer::recordMutex;
 std::vector<BYTE> AudioCapturer::fullRecordingData;
 
+namespace {
+    std::vector<BYTE> vadBuffer;
+    int silenceFrames = 0;
+    int speechFrames = 0;
+    bool inSpeech = false;
+    std::vector<BYTE> leftoverBytes;
+}
+
+float findPeakAbs(const int16_t* samples, size_t count) {
+    float peak = 0.0f;
+    for (size_t i = 0; i < count; ++i) {
+        float absVal = std::abs(samples[i] / 32768.0f);
+        if (absVal > peak) peak = absVal;
+    }
+    return peak;
+}
+
+void applyGain(int16_t* samples, size_t count, float gain) {
+    for (size_t i = 0; i < count; ++i) {
+        float v = samples[i] * gain;
+        if (v > 32767.0f) v = 32767.0f;
+        if (v < -32768.0f) v = -32768.0f;
+        samples[i] = static_cast<int16_t>(std::round(v));
+    }
+}
+
 void AudioCapturer::startAudioCapture(int secondsPerFile) {
     std::lock_guard<std::mutex> lock(recordMutex);
     if (recording) return;
     recording = true;
     fullRecordingData.clear();
+    leftoverBytes.clear();
     captureThread = std::thread(captureLoop, secondsPerFile);
 }
 
@@ -70,56 +100,33 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
     int segmentIdx = 1;
     std::string dateStr = getCurrentDateString();
 
-    auto segmentStartTime = std::chrono::steady_clock::now();
-
-    // --- Voice Activity Detection for 50ms window ---
-    constexpr int VAD_WINDOW_MS = 50;
-    constexpr int VAD_CHECK_INTERVAL_MS = 10;
-    constexpr float VAD_RMS_THRESHOLD = 0.001f; // Lower = more sensitive to silence
-    std::deque<float> rmsHistory;
-    int rmsHistoryMax = VAD_WINDOW_MS / VAD_CHECK_INTERVAL_MS;
+    vadBuffer.clear();
+    silenceFrames = 0;
+    speechFrames = 0;
+    inSpeech = false;
+    leftoverBytes.clear();
 
     while (recording) {
         std::vector<BYTE> capturedBuffer;
         processAudioBuffer(pCaptureClient, pwfx->nBlockAlign, capturedBuffer);
 
         if (!capturedBuffer.empty()) {
-            fullRecordingData.insert(fullRecordingData.end(), capturedBuffer.begin(), capturedBuffer.end());
-            audioData.insert(audioData.end(), capturedBuffer.begin(), capturedBuffer.end());
+            leftoverBytes.insert(leftoverBytes.end(), capturedBuffer.begin(), capturedBuffer.end());
+            vadSentenceSplitter({}, pwfx, segmentIdx, dateStr); 
         }
 
-        auto now = std::chrono::steady_clock::now();
-        auto segmentDuration = std::chrono::duration_cast<std::chrono::milliseconds>(now - segmentStartTime);
-
-        if (audioData.size() > bytesPerSec * MIN_SEGMENT_DURATION_SEC) {
-            float rms = calculateRMS(audioData, channels, VAD_CHECK_INTERVAL_MS);
-            rmsHistory.push_back(rms);
-            if (rmsHistory.size() > rmsHistoryMax) rmsHistory.pop_front();
-
-            bool noVoiceActivity = false;
-            if (rmsHistory.size() == rmsHistoryMax) {
-                noVoiceActivity = std::all_of(rmsHistory.begin(), rmsHistory.end(),
-                    [](float v) { return v < VAD_RMS_THRESHOLD; });
-            }
-
-            if (noVoiceActivity) {
-                saveSegmentedAudioFile(audioData, pwfx, segmentIdx, dateStr);
-                audioData.clear();
-                segmentStartTime = now;
-                segmentIdx++;
-                rmsHistory.clear();
-                continue;
-            }
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(VAD_CHECK_INTERVAL_MS));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    if (!audioData.empty()) {
-        saveSegmentedAudioFile(audioData, pwfx, segmentIdx, dateStr);
-    }
+    vadSentenceSplitter({}, pwfx, segmentIdx, dateStr, true);
 
     if (!fullRecordingData.empty()) {
+        int16_t* samples = reinterpret_cast<int16_t*>(fullRecordingData.data());
+        size_t sampleCount = fullRecordingData.size() / sizeof(int16_t);
+        float peak = findPeakAbs(samples, sampleCount);
+        float target = 0.98f;
+        float gain = (peak > 0.0001f && peak < target) ? (target / peak) : 1.0f;
+        if (gain > 1.01f) applyGain(samples, sampleCount, gain);
         saveFullAudioFile(fullRecordingData, pwfx, dateStr);
     }
 
@@ -257,8 +264,13 @@ void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int 
         for (size_t i = 0; i < sampleCount; ++i) {
             if (samples[i] > 1.0f) samples[i] = 1.0f;
             if (samples[i] < -1.0f) samples[i] = -1.0f;
-            scaled[i] = static_cast<short>(std::round(samples[i] * 32767.0f)); // Scale from [-1.0, 1.0] float to [-32768, 32767] short
+
+            float v = samples[i] * VOLUME_MULTIPLIER;
+            if (v > 1.0f) v = 1.0f;
+            if (v < -1.0f) v = -1.0f;
+            scaled[i] = static_cast<short>(std::round(v * 32767.0f));
         }
+
         audioData.insert(audioData.end(), (BYTE*)scaled.data(), (BYTE*)scaled.data() + sampleCount * sizeof(short)); // Append converted audio
 
         pCaptureClient->ReleaseBuffer(numFramesAvailable);          // Release current packet
@@ -294,70 +306,74 @@ void AudioCapturer::cleanupAudioDevices(WAVEFORMATEX* pwfx, IAudioCaptureClient*
     pEnumerator->Release();
 }
 
-float AudioCapturer::calculateRMS(const std::vector<BYTE>& audioData, int channels, int durationMs) {
-    if (audioData.size() < sizeof(short)) return 0.0f;
-
-    const short* samples = reinterpret_cast<const short*>(audioData.data());
-    size_t sampleCount = audioData.size() / sizeof(short);
-
-    // How many samples to use (based on time) Sample rate in Hz, 44100 = CD quality
-    size_t samplesForDuration = static_cast<size_t>((44100 * channels * durationMs) / 1000);
-    size_t samplesToCheck = (sampleCount < samplesForDuration) ? sampleCount : samplesForDuration;
-
-    if (samplesToCheck == 0) return 0.0f;
-
-    double sumSquares = 0.0;
-    for (size_t i = sampleCount - samplesToCheck; i < sampleCount; ++i) {
-        double normalized = static_cast<double>(samples[i]) / 32767.0; // Normalize sample to [-1.0, 1.0]
-        sumSquares += normalized * normalized;
+float AudioCapturer::frameRMS(const int16_t* samples, size_t count) {
+    double sum = 0.0;
+    for (size_t i = 0; i < count; ++i) {
+        double v = samples[i] / 32768.0;
+        sum += v * v;
     }
-
-    return static_cast<float>(std::sqrt(sumSquares / samplesToCheck));
+    return static_cast<float>(sqrt(sum / count));
 }
 
-float AudioCapturer::calculateZCR(const std::vector<BYTE>& audioData, int channels, int durationMs) {
-    if (audioData.size() < sizeof(short) * 2) return 0.0f;
-    const short* samples = reinterpret_cast<const short*>(audioData.data());
-    size_t sampleCount = audioData.size() / sizeof(short);
+void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>&, WAVEFORMATEX* pwfx, int& segmentIdx, const std::string& dateStr, bool forceFlush) {
+    const int sampleRate = pwfx->nSamplesPerSec;
+    const int channels = pwfx->nChannels;
+    const int bytesPerSample = 2;
+    const int frameSamples = (sampleRate * VAD_FRAME_MS) / 1000;
+    const int frameBytes = frameSamples * bytesPerSample * channels;
+    size_t offset = 0;
 
-    size_t samplesForDuration = static_cast<size_t>((44100 * channels * durationMs) / 1000);
-    size_t start = sampleCount > samplesForDuration ? sampleCount - samplesForDuration : 0;
-    size_t end = sampleCount;
+    while (leftoverBytes.size() - offset >= frameBytes) {
+        const int16_t* frame = reinterpret_cast<const int16_t*>(&leftoverBytes[offset]);
+        float rms = frameRMS(frame, frameSamples * channels);
 
-    int zeroCrossings = 0;
-    for (size_t i = start + 1; i < end; ++i) {
-        if ((samples[i - 1] >= 0 && samples[i] < 0) || (samples[i - 1] < 0 && samples[i] >= 0)) {
-            zeroCrossings++;
+        vadBuffer.insert(vadBuffer.end(), (BYTE*)frame, (BYTE*)frame + frameBytes);
+
+        if (rms > VAD_ENERGY_THRESHOLD) {
+            speechFrames++;
+            silenceFrames = 0;
+            inSpeech = true;
         }
+        else {
+            if (inSpeech) silenceFrames++;
+            if (inSpeech && silenceFrames >= VAD_MIN_SILENCE_FRAMES && speechFrames >= VAD_MIN_SPEECH_FRAMES) {
+                if (!vadBuffer.empty()) {
+                    int16_t* segSamples = reinterpret_cast<int16_t*>(vadBuffer.data());
+                    size_t segCount = vadBuffer.size() / sizeof(int16_t);
+                    float peak = findPeakAbs(segSamples, segCount);
+                    float target = 0.98f;
+                    float gain = (peak > 0.0001f && peak < target) ? (target / peak) : 1.0f;
+                    if (gain > 1.01f) applyGain(segSamples, segCount, gain);
+                }
+                saveSegmentedAudioFile(vadBuffer, pwfx, segmentIdx++, dateStr);
+                fullRecordingData.insert(fullRecordingData.end(), vadBuffer.begin(), vadBuffer.end());
+
+                vadBuffer.clear();
+                silenceFrames = 0;
+                speechFrames = 0;
+                inSpeech = false;
+            }
+        }
+        offset += frameBytes;
     }
-    float zcr = static_cast<float>(zeroCrossings) / (end - start);
-    return zcr;
-}
-
-bool AudioCapturer::detectSilence(const std::vector<BYTE>& audioData, int sampleRate, int channels, int durationMs) {
-    float rms = calculateRMS(audioData, channels, durationMs);
-    constexpr float SILENCE_THRESHOLD = 0.005f;
-    return rms < SILENCE_THRESHOLD;
-}
-
-bool AudioCapturer::isGoodSplitPoint(const std::vector<BYTE>& audioData, int sampleRate, int channels) {
-    float rms = calculateRMS(audioData, channels, 80);
-    float zcr = calculateZCR(audioData, channels, 80);
-
-    if (rms < 0.008f && zcr > 0.08f) {
-        return true;
-    }
-
-    if (detectSilence(audioData, sampleRate, channels, 120)) {
-        return true;
-    }
-
-    float currentRMS = calculateRMS(audioData, channels, 120);
-    float previousRMS = calculateRMS(audioData, channels, 240);
-
-    if (previousRMS > 0.02f && currentRMS < previousRMS * 0.4f && currentRMS < 0.01f) {
-        return true;
+    if (offset > 0) {
+        leftoverBytes.erase(leftoverBytes.begin(), leftoverBytes.begin() + offset);
     }
 
-    return false;
+    if (forceFlush && !vadBuffer.empty()) {
+        int16_t* segSamples = reinterpret_cast<int16_t*>(vadBuffer.data());
+        size_t segCount = vadBuffer.size() / sizeof(int16_t);
+        float peak = findPeakAbs(segSamples, segCount);
+        float target = 0.98f;
+        float gain = (peak > 0.0001f && peak < target) ? (target / peak) : 1.0f;
+        if (gain > 1.01f) applyGain(segSamples, segCount, gain);
+
+        saveSegmentedAudioFile(vadBuffer, pwfx, segmentIdx++, dateStr);
+        fullRecordingData.insert(fullRecordingData.end(), vadBuffer.begin(), vadBuffer.end());
+
+        vadBuffer.clear();
+        silenceFrames = 0;
+        speechFrames = 0;
+        inSpeech = false;
+    }
 }
