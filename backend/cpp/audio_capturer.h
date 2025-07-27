@@ -27,8 +27,11 @@ public:
 private:
     static constexpr int VAD_FRAME_MS = 20;
     static constexpr float VAD_ENERGY_THRESHOLD = 0.008f;
+
     static constexpr int VAD_MIN_SPEECH_FRAMES = 5;
     static constexpr int VAD_MIN_SILENCE_FRAMES = 8;
+
+    static constexpr float VOLUME_MULTIPLIER = 0.9f;
 
     static std::atomic<bool> recording;
     static std::thread captureThread;

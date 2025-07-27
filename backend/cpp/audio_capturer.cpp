@@ -13,6 +13,9 @@
 #include <filesystem>
 #include <deque>
 
+#include <vector>
+#include <cmath>
+
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
 
@@ -29,6 +32,25 @@ namespace {
     int silenceFrames = 0;
     int speechFrames = 0;
     bool inSpeech = false;
+    std::vector<BYTE> leftoverBytes;
+}
+
+float findPeakAbs(const int16_t* samples, size_t count) {
+    float peak = 0.0f;
+    for (size_t i = 0; i < count; ++i) {
+        float absVal = std::abs(samples[i] / 32768.0f);
+        if (absVal > peak) peak = absVal;
+    }
+    return peak;
+}
+
+void applyGain(int16_t* samples, size_t count, float gain) {
+    for (size_t i = 0; i < count; ++i) {
+        float v = samples[i] * gain;
+        if (v > 32767.0f) v = 32767.0f;
+        if (v < -32768.0f) v = -32768.0f;
+        samples[i] = static_cast<int16_t>(std::round(v));
+    }
 }
 
 void AudioCapturer::startAudioCapture(int secondsPerFile) {
@@ -36,6 +58,7 @@ void AudioCapturer::startAudioCapture(int secondsPerFile) {
     if (recording) return;
     recording = true;
     fullRecordingData.clear();
+    leftoverBytes.clear();
     captureThread = std::thread(captureLoop, secondsPerFile);
 }
 
@@ -81,22 +104,29 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
     silenceFrames = 0;
     speechFrames = 0;
     inSpeech = false;
+    leftoverBytes.clear();
 
     while (recording) {
         std::vector<BYTE> capturedBuffer;
         processAudioBuffer(pCaptureClient, pwfx->nBlockAlign, capturedBuffer);
 
         if (!capturedBuffer.empty()) {
-            fullRecordingData.insert(fullRecordingData.end(), capturedBuffer.begin(), capturedBuffer.end());
-            vadSentenceSplitter(capturedBuffer, pwfx, segmentIdx, dateStr);
+            leftoverBytes.insert(leftoverBytes.end(), capturedBuffer.begin(), capturedBuffer.end());
+            vadSentenceSplitter({}, pwfx, segmentIdx, dateStr); 
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    vadSentenceSplitter({}, pwfx, segmentIdx, dateStr, true); 
+    vadSentenceSplitter({}, pwfx, segmentIdx, dateStr, true);
 
     if (!fullRecordingData.empty()) {
+        int16_t* samples = reinterpret_cast<int16_t*>(fullRecordingData.data());
+        size_t sampleCount = fullRecordingData.size() / sizeof(int16_t);
+        float peak = findPeakAbs(samples, sampleCount);
+        float target = 0.98f;
+        float gain = (peak > 0.0001f && peak < target) ? (target / peak) : 1.0f;
+        if (gain > 1.01f) applyGain(samples, sampleCount, gain);
         saveFullAudioFile(fullRecordingData, pwfx, dateStr);
     }
 
@@ -234,8 +264,13 @@ void AudioCapturer::processAudioBuffer(IAudioCaptureClient* pCaptureClient, int 
         for (size_t i = 0; i < sampleCount; ++i) {
             if (samples[i] > 1.0f) samples[i] = 1.0f;
             if (samples[i] < -1.0f) samples[i] = -1.0f;
-            scaled[i] = static_cast<short>(std::round(samples[i] * 32767.0f)); // Scale from [-1.0, 1.0] float to [-32768, 32767] short
+
+            float v = samples[i] * VOLUME_MULTIPLIER;
+            if (v > 1.0f) v = 1.0f;
+            if (v < -1.0f) v = -1.0f;
+            scaled[i] = static_cast<short>(std::round(v * 32767.0f));
         }
+
         audioData.insert(audioData.end(), (BYTE*)scaled.data(), (BYTE*)scaled.data() + sampleCount * sizeof(short)); // Append converted audio
 
         pCaptureClient->ReleaseBuffer(numFramesAvailable);          // Release current packet
@@ -280,16 +315,16 @@ float AudioCapturer::frameRMS(const int16_t* samples, size_t count) {
     return static_cast<float>(sqrt(sum / count));
 }
 
-void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>& newAudio, WAVEFORMATEX* pwfx, int& segmentIdx, const std::string& dateStr, bool forceFlush) {
+void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>&, WAVEFORMATEX* pwfx, int& segmentIdx, const std::string& dateStr, bool forceFlush) {
     const int sampleRate = pwfx->nSamplesPerSec;
     const int channels = pwfx->nChannels;
     const int bytesPerSample = 2;
     const int frameSamples = (sampleRate * VAD_FRAME_MS) / 1000;
     const int frameBytes = frameSamples * bytesPerSample * channels;
-
     size_t offset = 0;
-    while (offset + frameBytes <= newAudio.size()) {
-        const int16_t* frame = reinterpret_cast<const int16_t*>(&newAudio[offset]);
+
+    while (leftoverBytes.size() - offset >= frameBytes) {
+        const int16_t* frame = reinterpret_cast<const int16_t*>(&leftoverBytes[offset]);
         float rms = frameRMS(frame, frameSamples * channels);
 
         vadBuffer.insert(vadBuffer.end(), (BYTE*)frame, (BYTE*)frame + frameBytes);
@@ -302,7 +337,17 @@ void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>& newAudio, WAVEF
         else {
             if (inSpeech) silenceFrames++;
             if (inSpeech && silenceFrames >= VAD_MIN_SILENCE_FRAMES && speechFrames >= VAD_MIN_SPEECH_FRAMES) {
+                if (!vadBuffer.empty()) {
+                    int16_t* segSamples = reinterpret_cast<int16_t*>(vadBuffer.data());
+                    size_t segCount = vadBuffer.size() / sizeof(int16_t);
+                    float peak = findPeakAbs(segSamples, segCount);
+                    float target = 0.98f;
+                    float gain = (peak > 0.0001f && peak < target) ? (target / peak) : 1.0f;
+                    if (gain > 1.01f) applyGain(segSamples, segCount, gain);
+                }
                 saveSegmentedAudioFile(vadBuffer, pwfx, segmentIdx++, dateStr);
+                fullRecordingData.insert(fullRecordingData.end(), vadBuffer.begin(), vadBuffer.end());
+
                 vadBuffer.clear();
                 silenceFrames = 0;
                 speechFrames = 0;
@@ -311,9 +356,21 @@ void AudioCapturer::vadSentenceSplitter(const std::vector<BYTE>& newAudio, WAVEF
         }
         offset += frameBytes;
     }
+    if (offset > 0) {
+        leftoverBytes.erase(leftoverBytes.begin(), leftoverBytes.begin() + offset);
+    }
 
     if (forceFlush && !vadBuffer.empty()) {
+        int16_t* segSamples = reinterpret_cast<int16_t*>(vadBuffer.data());
+        size_t segCount = vadBuffer.size() / sizeof(int16_t);
+        float peak = findPeakAbs(segSamples, segCount);
+        float target = 0.98f;
+        float gain = (peak > 0.0001f && peak < target) ? (target / peak) : 1.0f;
+        if (gain > 1.01f) applyGain(segSamples, segCount, gain);
+
         saveSegmentedAudioFile(vadBuffer, pwfx, segmentIdx++, dateStr);
+        fullRecordingData.insert(fullRecordingData.end(), vadBuffer.begin(), vadBuffer.end());
+
         vadBuffer.clear();
         silenceFrames = 0;
         speechFrames = 0;
