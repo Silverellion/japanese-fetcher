@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <iostream>
 
-#define DEFAULT_DIRECTORY std::string("C:\\japanese-fetcher\\")
+#define DEFAULT_DIRECTORY std::string("C:\\live-furigana\\")
 
 void Utility::initializeDirectory() {
     if (!std::filesystem::exists(DEFAULT_DIRECTORY)) {

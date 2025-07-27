@@ -6,14 +6,14 @@
 #include <iostream>
 #include <chrono>
 
-#define SEGMENTED_AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\Cache\\Audios\\")
-#define SEGMENTED_TRANSCRIPT_DIRECTORY std::string("C:\\japanese-fetcher\\Cache\\Transcripts\\")
-#define FULL_AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\Saved\\Audios\\")
-#define FULL_TRANSCRIPT_DIRECTORY std::string("C:\\japanese-fetcher\\Saved\\Transcripts\\")
+#define SEGMENTED_AUDIO_DIRECTORY std::string("C:\\live-furigana\\Cache\\Audios\\")
+#define SEGMENTED_TRANSCRIPT_DIRECTORY std::string("C:\\live-furigana\\Cache\\Transcripts\\")
+#define FULL_AUDIO_DIRECTORY std::string("C:\\live-furigana\\Saved\\Audios\\")
+#define FULL_TRANSCRIPT_DIRECTORY std::string("C:\\live-furigana\\Saved\\Transcripts\\")
 
 std::string exeDir = Utility::getExecutableDir();
 std::string whisperExe = exeDir + "external\\whisper.cpp\\whisper-cli.exe";
-std::string modelPath = "C:\\japanese-fetcher\\Saved\\Models\\ggml-medium.bin";
+std::string modelPath = "C:\\live-furigana\\Saved\\Models\\ggml-medium.bin";
 
 std::atomic<bool> Transcriber::running{ false };
 std::thread Transcriber::monitorThread;

@@ -35,7 +35,7 @@ async function initializeKuroshiro() {
 }
 
 function watchTranscripts() {
-  const TRANSCRIPT_DIR = "C:\\japanese-fetcher\\Cache\\Transcripts";
+  const TRANSCRIPT_DIR = "C:\\live-furigana\\Cache\\Transcripts";
   if (watcher) return;
 
   watcher = fs.watch(TRANSCRIPT_DIR, (eventType, filename) => {
