@@ -144,10 +144,7 @@ ipcMain.handle("get-recording-status", async () => {
   });
 });
 
-ipcMain.handle("convert-text", async (event, text, options) => {
-  if (!kuroshiroReady || !kuroshiro) {
-    throw new Error("Kuroshiro not initialized");
-  }
+ipcMain.handle("convert-text", async (_, text, options) => {
   return await kuroshiro.convert(text, options);
 });
 

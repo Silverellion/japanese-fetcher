@@ -24,7 +24,6 @@ void Transcriber::startTranscription() {
 
     running = true;
     monitorThread = std::thread(monitorAudioDirectory);
-    std::cout << "Transcription monitoring started." << std::endl;
 }
 
 void Transcriber::stopTranscription() {
@@ -34,40 +33,34 @@ void Transcriber::stopTranscription() {
     if (monitorThread.joinable()) {
         monitorThread.join();
     }
-    std::cout << "Transcription monitoring stopped." << std::endl;
 }
 
 void Transcriber::monitorAudioDirectory() {
     while (running) {
-        try {
-            for (const auto& entry : std::filesystem::directory_iterator(SEGMENTED_AUDIO_DIRECTORY)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".wav") {
-                    std::string filePath = entry.path().string();
+        for (const auto& entry : std::filesystem::directory_iterator(SEGMENTED_AUDIO_DIRECTORY)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".wav") {
+                std::string filePath = entry.path().string();
 
-                    if (processedFiles.find(filePath) == processedFiles.end()) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if (processedFiles.find(filePath) == processedFiles.end()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-                        transcribeFile(filePath);
-                        processedFiles.insert(filePath);
-                    }
-                }
-            }
-
-            for (const auto& entry : std::filesystem::directory_iterator(FULL_AUDIO_DIRECTORY)) {
-                if (entry.is_regular_file() && entry.path().extension() == ".wav") {
-                    std::string filePath = entry.path().string();
-
-                    if (processedFiles.find(filePath) == processedFiles.end()) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-                        transcribeFile(filePath);
-                        processedFiles.insert(filePath);
-                    }
+                    transcribeFile(filePath);
+                    processedFiles.insert(filePath);
                 }
             }
         }
-        catch (const std::exception& e) {
-            std::cerr << "Error monitoring directory: " << e.what() << std::endl;
+
+        for (const auto& entry : std::filesystem::directory_iterator(FULL_AUDIO_DIRECTORY)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".wav") {
+                std::string filePath = entry.path().string();
+
+                if (processedFiles.find(filePath) == processedFiles.end()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+                    transcribeFile(filePath);
+                    processedFiles.insert(filePath);
+                }
+            }
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -94,7 +87,6 @@ bool Transcriber::runProcessWithWorkingDir(const std::string& command, const std
     );
 
     if (!success) {
-        std::cerr << "Failed to launch process. Error: " << GetLastError() << std::endl;
         return false;
     }
 
@@ -116,7 +108,6 @@ void Transcriber::transcribeFile(const std::string& audioFilePath) {
         outputBase = getFullAudioFile(audioFilePath);
     }
     else {
-        std::cerr << "Unknown audio file type: " << audioFilePath << std::endl;
         return;
     }
 
@@ -128,14 +119,7 @@ void Transcriber::transcribeFile(const std::string& audioFilePath) {
         " --output-txt --output-srt";
 
     std::string whisperDir = exeDir + "external\\whisper.cpp\\";
-
-    std::cout << "Running: " << command << "\nWorking dir: " << whisperDir << std::endl;
-
-    bool ok = runProcessWithWorkingDir(command, whisperDir);
-    if (ok)
-        std::cout << "Transcribed: " << std::filesystem::path(audioFilePath).filename().string() << std::endl;
-    else
-        std::cerr << "Failed to transcribe: " << std::filesystem::path(audioFilePath).filename().string() << std::endl;
+    runProcessWithWorkingDir(command, whisperDir);
 }
 
 std::string Transcriber::getSegmentedAudioFile(const std::string& audioFilePath) {

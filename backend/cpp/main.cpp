@@ -9,8 +9,8 @@
 void printUsage() {
     std::cout << "Usage: cpp.exe [options]\n"
         << "Options:\n"
-        << "  --start-recording   Start in recording mode\n"
-        << "  --command <cmd>     Execute command (start-recording, stop-recording, get-status, exit)\n";
+        << "--start-recording   Start in recording mode\n"
+        << "--command <cmd>     Execute command (start-recording, stop-recording, get-status, exit)\n";
 }
 
 void handleCommand(const std::string& command) {
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
         AudioCapturer::startAudioCapture();
     }
 
-    std::cout << "Backend running. Press Ctrl+C to exit." << std::endl;
+    std::cout << "Backend running." << std::endl;
 
     std::string line;
     while (std::getline(std::cin, line)) {
