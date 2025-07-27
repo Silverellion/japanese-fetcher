@@ -19,8 +19,8 @@
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "avrt.lib")
 
-#define SEGMENTED_AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\Cache\\Audios\\")
-#define FULL_AUDIO_DIRECTORY std::string("C:\\japanese-fetcher\\Saved\\Audios\\")
+#define SEGMENTED_AUDIO_DIRECTORY std::string("C:\\live-furigana\\Cache\\Audios\\")
+#define FULL_AUDIO_DIRECTORY std::string("C:\\live-furigana\\Saved\\Audios\\")
 
 std::atomic<bool> AudioCapturer::recording{ false };
 std::thread AudioCapturer::captureThread;

@@ -18,7 +18,7 @@ public:
     * @param secondsPerFile Duration of each captured audio file in seconds
     *
     * This class records audio being played through the default audio output device
-    * and saves it to WAV files of specified duration inside "C:\\japanese-fetcher\\audios".
+    * and saves it to WAV files of specified duration inside "C:\\live-furigana\\audios".
     */
     static void startAudioCapture(int secondsPerFile = 1);
     static void stopAudioCapture();
