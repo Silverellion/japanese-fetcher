@@ -1,5 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { type SubtitleState } from "../../../../App";
 import "./subtitles.css";
 
 declare global {
@@ -16,9 +17,17 @@ declare global {
 
 const MAX_LINES = 3;
 
-const Subtitles: React.FC = () => {
-  const [subtitles, setSubtitles] = React.useState<string[]>([]);
-  const [backendReady, setBackendReady] = React.useState(false);
+type SubtitlesProps = Pick<
+  SubtitleState,
+  "subtitles" | "setSubtitles" | "backendReady" | "setBackendReady"
+>;
+
+const Subtitles: React.FC<SubtitlesProps> = ({
+  subtitles,
+  setSubtitles,
+  backendReady,
+  setBackendReady,
+}) => {
   const [furiganaSubtitles, setFuriganaSubtitles] = React.useState<string[]>([]);
 
   React.useEffect(() => {
@@ -26,7 +35,7 @@ const Subtitles: React.FC = () => {
       setBackendReady(true);
     });
     return cleanup;
-  }, []);
+  }, [setBackendReady]);
 
   React.useEffect(() => {
     if (!backendReady) return;
@@ -44,7 +53,7 @@ const Subtitles: React.FC = () => {
 
     const cleanup = window.fileSystem.watchTranscripts(handleNewTranscript);
     return cleanup;
-  }, [backendReady]);
+  }, [backendReady, setSubtitles]);
 
   React.useEffect(() => {
     const processFurigana = async () => {

@@ -84,7 +84,6 @@ void AudioCapturer::captureLoop(int secondsPerFile) {
     IAudioCaptureClient* pCaptureClient = nullptr;
 
     if (!initializeAudioDevices(&pEnumerator, &pDevice, &pAudioClient, &pCaptureClient)) {
-        std::cerr << "Failed to initialize audio devices" << std::endl;
         return;
     }
 
@@ -138,35 +137,30 @@ std::string AudioCapturer::getCurrentDateString() {
     int recordingNumber = 1;
     std::regex recordingPattern("RECORDING_([0-9]+)_");
 
-    try {
-        for (const auto& entry : std::filesystem::directory_iterator(SEGMENTED_AUDIO_DIRECTORY)) {
-            if (entry.is_regular_file() && entry.path().extension() == ".wav") {
-                std::string filename = entry.path().filename().string();
-                std::smatch matches;
-                if (std::regex_search(filename, matches, recordingPattern) && matches.size() > 1) {
-                    int foundNumber = std::stoi(matches[1].str());
-                    if (foundNumber >= recordingNumber) {
-                        recordingNumber = foundNumber + 1;
-                    }
-                }
-            }
-        }
-
-        for (const auto& entry : std::filesystem::directory_iterator(FULL_AUDIO_DIRECTORY)) {
-            if (entry.is_regular_file() && entry.path().extension() == ".wav") {
-                std::string filename = entry.path().filename().string();
-                std::smatch matches;
-                if (std::regex_search(filename, matches, recordingPattern) && matches.size() > 1) {
-                    int foundNumber = std::stoi(matches[1].str());
-                    if (foundNumber >= recordingNumber) {
-                        recordingNumber = foundNumber + 1;
-                    }
+    for (const auto& entry : std::filesystem::directory_iterator(SEGMENTED_AUDIO_DIRECTORY)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".wav") {
+            std::string filename = entry.path().filename().string();
+            std::smatch matches;
+            if (std::regex_search(filename, matches, recordingPattern) && matches.size() > 1) {
+                int foundNumber = std::stoi(matches[1].str());
+                if (foundNumber >= recordingNumber) {
+                    recordingNumber = foundNumber + 1;
                 }
             }
         }
     }
-    catch (const std::exception& e) {
-        std::cerr << "Error finding recording number: " << e.what() << std::endl;
+
+    for (const auto& entry : std::filesystem::directory_iterator(FULL_AUDIO_DIRECTORY)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".wav") {
+            std::string filename = entry.path().filename().string();
+            std::smatch matches;
+            if (std::regex_search(filename, matches, recordingPattern) && matches.size() > 1) {
+                int foundNumber = std::stoi(matches[1].str());
+                if (foundNumber >= recordingNumber) {
+                    recordingNumber = foundNumber + 1;
+                }
+            }
+        }
     }
 
     std::time_t t = std::time(nullptr);
