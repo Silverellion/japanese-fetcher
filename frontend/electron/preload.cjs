@@ -22,3 +22,9 @@ contextBridge.exposeInMainWorld("fileSystem", {
 contextBridge.exposeInMainWorld("kuroshiro", {
   convert: (text, options) => ipcRenderer.invoke("convert-text", text, options),
 });
+
+ipcRenderer.on("main-window-state", (_, state) => {
+  if (window.__stickyWindowSetVisible) {
+    window.__stickyWindowSetVisible(state === "minimized" || state === "closed");
+  }
+});

@@ -112,6 +112,16 @@ function createWindow() {
     startBackend();
   });
 
+  mainWindow.on("minimize", () => {
+    mainWindow.webContents.send("main-window-state", "minimized");
+  });
+  mainWindow.on("restore", () => {
+    mainWindow.webContents.send("main-window-state", "restored");
+  });
+  mainWindow.on("close", (e) => {
+    mainWindow.webContents.send("main-window-state", "closed");
+  });
+
   if (isDev) {
     mainWindow.loadURL("http://localhost:5173");
     // mainWindow.webContents.openDevTools();
@@ -119,6 +129,87 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 }
+
+let stickyWindow = null;
+
+function createStickyWindow() {
+  stickyWindow = new BrowserWindow({
+    width: 600,
+    height: 160,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    show: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.cjs"),
+    },
+  });
+
+  if (isDev) {
+    stickyWindow.loadURL("http://localhost:5173/#/sticky");
+  } else {
+    stickyWindow.loadFile(path.join(__dirname, "../dist/index.html"), { hash: "/sticky" });
+  }
+}
+
+function showStickyWindow(show) {
+  if (!stickyWindow) return;
+  if (show) {
+    stickyWindow.showInactive();
+  } else {
+    stickyWindow.hide();
+  }
+}
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 720,
+    minWidth: 960,
+    minHeight: 540,
+    show: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.cjs"),
+    },
+  });
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow.show();
+    startBackend();
+  });
+
+  mainWindow.on("minimize", () => {
+    mainWindow.webContents.send("main-window-state", "minimized");
+    showStickyWindow(true);
+  });
+  mainWindow.on("restore", () => {
+    mainWindow.webContents.send("main-window-state", "restored");
+    showStickyWindow(false);
+  });
+  mainWindow.on("close", (e) => {
+    mainWindow.webContents.send("main-window-state", "closed");
+    showStickyWindow(true);
+  });
+
+  if (isDev) {
+    mainWindow.loadURL("http://localhost:5173");
+  } else {
+    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+  }
+}
+
+app.whenReady().then(async () => {
+  createWindow();
+  createStickyWindow();
+  await initializeKuroshiro();
+});
 
 ipcMain.handle("start-recording", async () => {
   await startBackend();
